@@ -131,12 +131,14 @@ class ImportContentTypesForm extends FormBase {
 
           // Додаємо інформацію про vocabulary для taxonomy_term_reference.
           if ($field_info['type'] == 'taxonomy_term_reference') {
-            $vocabulary = $field_info['vocabulary'] ?? $field_info['settings']['allowed_values'][0]['vocabulary'] ?? NULL;
-            if (!empty($vocabulary)) {
-              $description .= '<br><strong>' . $this->t('Словник: @vocabulary', ['@vocabulary' => $vocabulary]) . '</strong>';
+            if (!empty($field_info['vocabularies']) && is_array($field_info['vocabularies'])) {
+              $vocab_names = array_map(function($vocab) {
+                return $vocab['name'] . ' (' . $vocab['machine_name'] . ')';
+              }, $field_info['vocabularies']);
+              $description .= '<br><strong>' . $this->t('Словники: @vocabularies', ['@vocabularies' => implode(', ', $vocab_names)]) . '</strong>';
             }
             else {
-              $description .= '<br><span style="color: red;">' . $this->t('⚠ УВАГА: Vocabulary не знайдено! Поле не буде прив\'язане до словника. Додайте поле "vocabulary" в JSON endpoint.') . '</span>';
+              $description .= '<br><span style="color: red;">' . $this->t('⚠ УВАГА: Vocabularies не знайдено! Поле не буде прив\'язане до словника. Переконайтесь що в JSON є поле "vocabularies" з масивом словників.') . '</span>';
             }
           }
 
@@ -331,28 +333,38 @@ class ImportContentTypesForm extends FormBase {
 
       // Для taxonomy_term_reference налаштовуємо vocabulary.
       if ($field_info['type'] == 'taxonomy_term_reference') {
-        // Шукаємо vocabulary в різних можливих місцях.
-        $vocabulary = $field_info['vocabulary'] ?? $field_info['settings']['allowed_values'][0]['vocabulary'] ?? NULL;
+        if (!empty($field_info['vocabularies']) && is_array($field_info['vocabularies'])) {
+          $target_bundles = [];
+          foreach ($field_info['vocabularies'] as $vocab) {
+            if (!empty($vocab['machine_name'])) {
+              $target_bundles[$vocab['machine_name']] = $vocab['machine_name'];
+            }
+          }
 
-        if (!empty($vocabulary)) {
-          $field_settings['settings'] = [
-            'handler' => 'default:taxonomy_term',
-            'handler_settings' => [
-              'target_bundles' => [
-                $vocabulary => $vocabulary,
+          if (!empty($target_bundles)) {
+            $field_settings['settings'] = [
+              'handler' => 'default:taxonomy_term',
+              'handler_settings' => [
+                'target_bundles' => $target_bundles,
               ],
-            ],
-          ];
+            ];
 
-          \Drupal::logger('migrate_from_drupal7')->info(
-            'Налаштовано прив\'язку поля @field до словника @vocabulary',
-            ['@field' => $field_name, '@vocabulary' => $vocabulary]
-          );
+            \Drupal::logger('migrate_from_drupal7')->info(
+              'Налаштовано прив\'язку поля @field до словників: @vocabularies',
+              ['@field' => $field_name, '@vocabularies' => implode(', ', array_keys($target_bundles))]
+            );
+          }
+          else {
+            \Drupal::logger('migrate_from_drupal7')->warning(
+              'Для поля @field типу taxonomy_term_reference не знайдено machine_name в vocabularies',
+              ['@field' => $field_name]
+            );
+          }
         }
         else {
-          // Логуємо попередження якщо vocabulary не знайдено.
+          // Логуємо попередження якщо vocabularies не знайдено.
           \Drupal::logger('migrate_from_drupal7')->warning(
-            'Для поля @field типу taxonomy_term_reference не знайдено vocabulary. Дані поля: @data',
+            'Для поля @field типу taxonomy_term_reference не знайдено масив vocabularies. Дані поля: @data',
             ['@field' => $field_name, '@data' => print_r($field_info, TRUE)]
           );
         }
