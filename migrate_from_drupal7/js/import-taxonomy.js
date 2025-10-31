@@ -3,7 +3,7 @@
  * JavaScript для форми імпорту таксономій.
  */
 
-(function ($, Drupal) {
+(function ($, Drupal, once) {
   'use strict';
 
   /**
@@ -12,8 +12,10 @@
   Drupal.behaviors.migrateFromDrupal7SelectAll = {
     attach: function (context, settings) {
       // Знаходимо всі чекбокси "Вибрати всі поля"
-      $('input[type="checkbox"][id$="select-all"]', context).once('select-all').each(function () {
-        var $selectAll = $(this);
+      var selectAllCheckboxes = once('select-all', 'input[type="checkbox"][id$="select-all"]', context);
+
+      selectAllCheckboxes.forEach(function (element) {
+        var $selectAll = $(element);
 
         // Знаходимо батьківський контейнер полів
         var $fieldsContainer = $selectAll.closest('.form-item').parent();
@@ -42,4 +44,4 @@
     }
   };
 
-})(jQuery, Drupal);
+})(jQuery, Drupal, once);
