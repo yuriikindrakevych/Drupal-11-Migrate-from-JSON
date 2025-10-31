@@ -3,6 +3,4 @@ import-taxonomy:
   js:
     js/import-taxonomy.js: {}
   dependencies:
-    - core/jquery
     - core/drupal
-    - core/once
