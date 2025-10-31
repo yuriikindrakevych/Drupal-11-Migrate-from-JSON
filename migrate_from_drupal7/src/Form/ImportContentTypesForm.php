@@ -130,8 +130,14 @@ class ImportContentTypesForm extends FormBase {
           ]);
 
           // Додаємо інформацію про vocabulary для taxonomy_term_reference.
-          if ($field_info['type'] == 'taxonomy_term_reference' && !empty($field_info['vocabulary'])) {
-            $description .= '<br>' . $this->t('Словник: @vocabulary', ['@vocabulary' => $field_info['vocabulary']]);
+          if ($field_info['type'] == 'taxonomy_term_reference') {
+            $vocabulary = $field_info['vocabulary'] ?? $field_info['settings']['allowed_values'][0]['vocabulary'] ?? NULL;
+            if (!empty($vocabulary)) {
+              $description .= '<br><strong>' . $this->t('Словник: @vocabulary', ['@vocabulary' => $vocabulary]) . '</strong>';
+            }
+            else {
+              $description .= '<br><span style="color: red;">' . $this->t('⚠ УВАГА: Vocabulary не знайдено! Поле не буде прив\'язане до словника. Додайте поле "vocabulary" в JSON endpoint.') . '</span>';
+            }
           }
 
           $form['content_types'][$type_id]['fields'][$field_name] = [
@@ -324,15 +330,32 @@ class ImportContentTypesForm extends FormBase {
       ];
 
       // Для taxonomy_term_reference налаштовуємо vocabulary.
-      if ($field_info['type'] == 'taxonomy_term_reference' && !empty($field_info['vocabulary'])) {
-        $field_settings['settings'] = [
-          'handler' => 'default:taxonomy_term',
-          'handler_settings' => [
-            'target_bundles' => [
-              $field_info['vocabulary'] => $field_info['vocabulary'],
+      if ($field_info['type'] == 'taxonomy_term_reference') {
+        // Шукаємо vocabulary в різних можливих місцях.
+        $vocabulary = $field_info['vocabulary'] ?? $field_info['settings']['allowed_values'][0]['vocabulary'] ?? NULL;
+
+        if (!empty($vocabulary)) {
+          $field_settings['settings'] = [
+            'handler' => 'default:taxonomy_term',
+            'handler_settings' => [
+              'target_bundles' => [
+                $vocabulary => $vocabulary,
+              ],
             ],
-          ],
-        ];
+          ];
+
+          \Drupal::logger('migrate_from_drupal7')->info(
+            'Налаштовано прив\'язку поля @field до словника @vocabulary',
+            ['@field' => $field_name, '@vocabulary' => $vocabulary]
+          );
+        }
+        else {
+          // Логуємо попередження якщо vocabulary не знайдено.
+          \Drupal::logger('migrate_from_drupal7')->warning(
+            'Для поля @field типу taxonomy_term_reference не знайдено vocabulary. Дані поля: @data',
+            ['@field' => $field_name, '@data' => print_r($field_info, TRUE)]
+          );
+        }
       }
 
       $field = FieldConfig::create($field_settings);
