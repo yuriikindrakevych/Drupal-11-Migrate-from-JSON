@@ -95,12 +95,31 @@ class ImportTaxonomyForm extends FormBase {
         '#default_value' => FALSE,
       ];
 
+      // Формуємо інформацію про багатомовність.
+      $multilingual_info = '';
+      if (!empty($vocabulary['translatable'])) {
+        $translation_modes = [
+          'none' => $this->t('Немає'),
+          'localize' => $this->t('Локалізація'),
+          'fixed_language' => $this->t('Фіксована мова'),
+          'translate' => $this->t('Переклад'),
+        ];
+        $translation_mode = $vocabulary['translation_mode'] ?? 'none';
+        $multilingual_info = '<br><strong>' . $this->t('Багатомовний:') . '</strong> ' . $this->t('Так') .
+                           '<br><strong>' . $this->t('Режим перекладу:') . '</strong> ' . ($translation_modes[$translation_mode] ?? $translation_mode) .
+                           '<br><strong>' . $this->t('i18n режим:') . '</strong> ' . ($vocabulary['i18n_mode'] ?? '0');
+        if (!empty($vocabulary['entity_translation_enabled'])) {
+          $multilingual_info .= '<br><strong>' . $this->t('Entity Translation:') . '</strong> ' . $this->t('Увімкнено');
+        }
+      }
+
       $form['vocabularies'][$machine_name]['info'] = [
         '#type' => 'item',
         '#markup' => '<strong>' . $this->t('VID:') . '</strong> ' . $vocabulary['vid'] . '<br>' .
                      '<strong>' . $this->t('Опис:') . '</strong> ' . ($vocabulary['description'] ?? '') . '<br>' .
                      '<strong>' . $this->t('Ієрархія:') . '</strong> ' . ($vocabulary['hierarchy'] ?? '0') . '<br>' .
-                     '<strong>' . $this->t('Вага:') . '</strong> ' . ($vocabulary['weight'] ?? '0'),
+                     '<strong>' . $this->t('Вага:') . '</strong> ' . ($vocabulary['weight'] ?? '0') .
+                     $multilingual_info,
       ];
 
       // Поля словника.
@@ -217,9 +236,19 @@ class ImportTaxonomyForm extends FormBase {
         ]);
         $vocabulary->save();
 
+        // Налаштування мультимовності.
+        if (!empty($vocabulary_data['translatable'])) {
+          self::configureMultilingual($machine_name, $vocabulary_data);
+        }
+
         $context['results']['created'][] = $vocabulary_data['name'];
       }
       else {
+        // Оновлюємо мультимовність для існуючого словника.
+        if (!empty($vocabulary_data['translatable'])) {
+          self::configureMultilingual($machine_name, $vocabulary_data);
+        }
+
         $context['results']['updated'][] = $vocabulary_data['name'];
       }
 
@@ -241,6 +270,62 @@ class ImportTaxonomyForm extends FormBase {
         '@message' => $e->getMessage(),
       ]);
       $context['results']['errors'][] = $vocabulary_data['name'] . ': ' . $e->getMessage();
+    }
+  }
+
+  /**
+   * Налаштувати мультимовність для словника.
+   *
+   * @param string $vocabulary_id
+   *   ID словника.
+   * @param array $vocabulary_data
+   *   Дані словника з Drupal 7.
+   */
+  protected static function configureMultilingual($vocabulary_id, array $vocabulary_data) {
+    // Перевіряємо чи доступний модуль content_translation.
+    $module_handler = \Drupal::moduleHandler();
+    if (!$module_handler->moduleExists('content_translation')) {
+      \Drupal::logger('migrate_from_drupal7')->warning(
+        'Модуль content_translation не увімкнено. Мультимовність для словника @name не буде налаштована.',
+        ['@name' => $vocabulary_data['name']]
+      );
+      return;
+    }
+
+    try {
+      // Налаштування мови для taxonomy_term bundle.
+      $config = \Drupal::configFactory()->getEditable('language.content_settings.taxonomy_term.' . $vocabulary_id);
+
+      // Встановлюємо налаштування мови.
+      $config->set('langcode', 'uk');
+      $config->set('status', TRUE);
+      $config->set('dependencies', [
+        'config' => ['taxonomy.vocabulary.' . $vocabulary_id],
+        'module' => ['content_translation'],
+      ]);
+      $config->set('third_party_settings', [
+        'content_translation' => [
+          'enabled' => TRUE,
+        ],
+      ]);
+      $config->set('id', 'taxonomy_term.' . $vocabulary_id);
+      $config->set('target_entity_type_id', 'taxonomy_term');
+      $config->set('target_bundle', $vocabulary_id);
+      $config->set('default_langcode', 'site_default');
+      $config->set('language_alterable', TRUE);
+
+      $config->save();
+
+      \Drupal::logger('migrate_from_drupal7')->info(
+        'Налаштовано мультимовність для словника @name',
+        ['@name' => $vocabulary_data['name']]
+      );
+    }
+    catch (\Exception $e) {
+      \Drupal::logger('migrate_from_drupal7')->error(
+        'Помилка налаштування мультимовності для словника @name: @message',
+        ['@name' => $vocabulary_data['name'], '@message' => $e->getMessage()]
+      );
     }
   }
 
