@@ -9,6 +9,8 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\field\Entity\FieldStorageConfig;
 use Drupal\field\Entity\FieldConfig;
+use Drupal\Core\Entity\Entity\EntityFormDisplay;
+use Drupal\Core\Entity\Entity\EntityViewDisplay;
 
 /**
  * Форма для імпорту словників таксономії з Drupal 7.
@@ -391,7 +393,146 @@ class ImportTaxonomyForm extends FormBase {
         'required' => (bool) $field_info['required'],
       ]);
       $field->save();
+
+      // Налаштовуємо відображення поля у формі (Form Display).
+      self::configureFormDisplay($vocabulary_id, $field_name, $field_info);
+
+      // Налаштовуємо відображення поля при перегляді (View Display).
+      self::configureViewDisplay($vocabulary_id, $field_name, $field_info);
     }
+  }
+
+  /**
+   * Налаштувати відображення поля у формі.
+   *
+   * @param string $vocabulary_id
+   *   ID словника.
+   * @param string $field_name
+   *   Назва поля.
+   * @param array $field_info
+   *   Інформація про поле.
+   */
+  protected static function configureFormDisplay($vocabulary_id, $field_name, array $field_info) {
+    // Завантажуємо або створюємо form display.
+    $form_display = EntityFormDisplay::load('taxonomy_term.' . $vocabulary_id . '.default');
+
+    if (!$form_display) {
+      $form_display = EntityFormDisplay::create([
+        'targetEntityType' => 'taxonomy_term',
+        'bundle' => $vocabulary_id,
+        'mode' => 'default',
+        'status' => TRUE,
+      ]);
+    }
+
+    // Мапінг віджетів з Drupal 7 на Drupal 11.
+    $widget_map = [
+      'text_textfield' => 'string_textfield',
+      'text_textarea' => 'string_textarea',
+      'text_textarea_with_summary' => 'text_textarea_with_summary',
+      'number' => 'number',
+      'options_select' => 'options_select',
+      'options_buttons' => 'options_buttons',
+      'image_image' => 'image_image',
+      'file_generic' => 'file_generic',
+      'taxonomy_autocomplete' => 'entity_reference_autocomplete',
+      'entityreference_autocomplete' => 'entity_reference_autocomplete',
+      'link_field' => 'link_default',
+      'email_textfield' => 'email_default',
+      'date_select' => 'datetime_default',
+      'date_text' => 'datetime_default',
+    ];
+
+    $widget_type = $widget_map[$field_info['widget'] ?? ''] ?? 'string_textfield';
+
+    // Додаємо поле до form display.
+    $form_display->setComponent($field_name, [
+      'type' => $widget_type,
+      'weight' => 10,
+      'settings' => [],
+      'third_party_settings' => [],
+    ]);
+
+    $form_display->save();
+  }
+
+  /**
+   * Налаштувати відображення поля при перегляді.
+   *
+   * @param string $vocabulary_id
+   *   ID словника.
+   * @param string $field_name
+   *   Назва поля.
+   * @param array $field_info
+   *   Інформація про поле.
+   */
+  protected static function configureViewDisplay($vocabulary_id, $field_name, array $field_info) {
+    // Завантажуємо або створюємо view display.
+    $view_display = EntityViewDisplay::load('taxonomy_term.' . $vocabulary_id . '.default');
+
+    if (!$view_display) {
+      $view_display = EntityViewDisplay::create([
+        'targetEntityType' => 'taxonomy_term',
+        'bundle' => $vocabulary_id,
+        'mode' => 'default',
+        'status' => TRUE,
+      ]);
+    }
+
+    // Мапінг форматерів з типів полів.
+    $formatter_map = [
+      'string' => 'string',
+      'string_long' => 'basic_string',
+      'text_with_summary' => 'text_default',
+      'integer' => 'number_integer',
+      'decimal' => 'number_decimal',
+      'float' => 'number_decimal',
+      'list_string' => 'list_default',
+      'list_integer' => 'list_default',
+      'list_float' => 'list_default',
+      'image' => 'image',
+      'file' => 'file_default',
+      'entity_reference' => 'entity_reference_label',
+      'link' => 'link',
+      'email' => 'basic_string',
+      'datetime' => 'datetime_default',
+      'timestamp' => 'timestamp',
+    ];
+
+    // Визначаємо тип поля для вибору форматера.
+    $field_type_map = [
+      'text' => 'string',
+      'text_long' => 'string_long',
+      'text_with_summary' => 'text_with_summary',
+      'number_integer' => 'integer',
+      'number_decimal' => 'decimal',
+      'number_float' => 'float',
+      'list_text' => 'list_string',
+      'list_integer' => 'list_integer',
+      'list_float' => 'list_float',
+      'image' => 'image',
+      'file' => 'file',
+      'taxonomy_term_reference' => 'entity_reference',
+      'entityreference' => 'entity_reference',
+      'link_field' => 'link',
+      'email' => 'email',
+      'date' => 'datetime',
+      'datestamp' => 'timestamp',
+    ];
+
+    $field_type = $field_type_map[$field_info['type']] ?? 'string';
+    $formatter_type = $formatter_map[$field_type] ?? 'string';
+
+    // Додаємо поле до view display.
+    $view_display->setComponent($field_name, [
+      'type' => $formatter_type,
+      'weight' => 10,
+      'label' => 'above',
+      'settings' => [],
+      'third_party_settings' => [],
+    ]);
+
+    $view_display->save();
   }
 
   /**
