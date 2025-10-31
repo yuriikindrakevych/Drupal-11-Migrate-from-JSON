@@ -17,7 +17,7 @@ migrate_from_drupal7.import_taxonomy:
 migrate_from_drupal7.overview:
   path: '/admin/config/content/migrate-drupal7'
   defaults:
-    _form: '\Drupal\migrate_from_drupal7\Form\ImportTaxonomyForm'
+    _form: '\Drupal\migrate_from_drupal7\Form\SettingsForm'
     _title: 'Міграція з Drupal 7'
   requirements:
     _permission: 'administer site configuration'

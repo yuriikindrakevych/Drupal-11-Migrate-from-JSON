@@ -1,11 +1,11 @@
+migrate_from_drupal7.overview:
+  route_name: migrate_from_drupal7.overview
+  base_route: migrate_from_drupal7.overview
+  title: 'Налаштування'
+  weight: -10
+
 migrate_from_drupal7.import_taxonomy:
   route_name: migrate_from_drupal7.import_taxonomy
   base_route: migrate_from_drupal7.overview
   title: 'Імпорт словників таксономії'
-  weight: 1
-
-migrate_from_drupal7.settings:
-  route_name: migrate_from_drupal7.settings
-  base_route: migrate_from_drupal7.overview
-  title: 'Налаштування'
-  weight: 10
+  weight: 0
