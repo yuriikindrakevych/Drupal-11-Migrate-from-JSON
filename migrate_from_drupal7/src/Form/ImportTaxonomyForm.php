@@ -73,6 +73,9 @@ class ImportTaxonomyForm extends FormBase {
       return $form;
     }
 
+    // Прикріплюємо JavaScript бібліотеку.
+    $form['#attached']['library'][] = 'migrate_from_drupal7/import-taxonomy';
+
     $form['info'] = [
       '#markup' => '<p>' . $this->t('Виберіть словники таксономії та їх поля для імпорту. Терміни таксономій будуть імпортовані пізніше.') . '</p>',
     ];

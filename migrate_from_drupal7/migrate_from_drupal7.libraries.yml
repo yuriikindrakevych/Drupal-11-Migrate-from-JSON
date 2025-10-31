@@ -1,0 +1,8 @@
+import-taxonomy:
+  version: 1.x
+  js:
+    js/import-taxonomy.js: {}
+  dependencies:
+    - core/jquery
+    - core/drupal
+    - core/jquery.once
