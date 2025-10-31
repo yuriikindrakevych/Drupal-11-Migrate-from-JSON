@@ -126,4 +126,14 @@ class Drupal7ApiClient {
     return $this->get('terms', $params);
   }
 
+  /**
+   * Отримати типи контенту з Drupal 7.
+   *
+   * @return array|null
+   *   Масив типів контенту або NULL у разі помилки.
+   */
+  public function getContentTypes() {
+    return $this->get('content_types');
+  }
+
 }

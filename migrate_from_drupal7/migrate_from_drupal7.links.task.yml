@@ -9,3 +9,9 @@ migrate_from_drupal7.import_taxonomy:
   base_route: migrate_from_drupal7.overview
   title: 'Імпорт словників таксономії'
   weight: 0
+
+migrate_from_drupal7.import_content_types:
+  route_name: migrate_from_drupal7.import_content_types
+  base_route: migrate_from_drupal7.overview
+  title: 'Імпорт типів матеріалів та полів'
+  weight: 5

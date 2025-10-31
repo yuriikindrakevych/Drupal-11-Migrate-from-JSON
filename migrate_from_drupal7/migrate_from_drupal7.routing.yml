@@ -14,6 +14,14 @@ migrate_from_drupal7.import_taxonomy:
   requirements:
     _permission: 'administer site configuration'
 
+migrate_from_drupal7.import_content_types:
+  path: '/admin/config/content/migrate-drupal7/import-content-types'
+  defaults:
+    _form: '\Drupal\migrate_from_drupal7\Form\ImportContentTypesForm'
+    _title: 'Імпорт типів матеріалів та полів'
+  requirements:
+    _permission: 'administer site configuration'
+
 migrate_from_drupal7.overview:
   path: '/admin/config/content/migrate-drupal7'
   defaults:
