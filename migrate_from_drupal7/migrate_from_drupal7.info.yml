@@ -1,0 +1,8 @@
+name: 'Migrate from Drupal 7'
+type: module
+description: 'Модуль для міграції даних з Drupal 7 в Drupal 11'
+core_version_requirement: ^10 || ^11
+package: 'Migration'
+dependencies:
+  - drupal:taxonomy
+  - drupal:field

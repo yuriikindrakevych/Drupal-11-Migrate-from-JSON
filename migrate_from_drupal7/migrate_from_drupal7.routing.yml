@@ -1,0 +1,23 @@
+migrate_from_drupal7.settings:
+  path: '/admin/config/content/migrate-drupal7/settings'
+  defaults:
+    _form: '\Drupal\migrate_from_drupal7\Form\SettingsForm'
+    _title: 'Налаштування'
+  requirements:
+    _permission: 'administer site configuration'
+
+migrate_from_drupal7.import_taxonomy:
+  path: '/admin/config/content/migrate-drupal7/import-taxonomy'
+  defaults:
+    _form: '\Drupal\migrate_from_drupal7\Form\ImportTaxonomyForm'
+    _title: 'Імпорт словників таксономії'
+  requirements:
+    _permission: 'administer site configuration'
+
+migrate_from_drupal7.overview:
+  path: '/admin/config/content/migrate-drupal7'
+  defaults:
+    _form: '\Drupal\migrate_from_drupal7\Form\ImportTaxonomyForm'
+    _title: 'Міграція з Drupal 7'
+  requirements:
+    _permission: 'administer site configuration'

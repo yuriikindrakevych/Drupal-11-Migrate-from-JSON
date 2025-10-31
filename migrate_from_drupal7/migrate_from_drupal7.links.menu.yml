@@ -1,0 +1,6 @@
+migrate_from_drupal7.admin:
+  title: 'Міграція з Drupal 7'
+  description: 'Інструменти для міграції даних з Drupal 7'
+  route_name: migrate_from_drupal7.overview
+  parent: system.admin_config_content
+  weight: 10

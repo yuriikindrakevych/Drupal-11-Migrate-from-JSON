@@ -1,0 +1,12 @@
+base_url: ''
+endpoints:
+  content_types: '/json-api/content-type'
+  fields: '/json-api/fields'
+  taxonomies: '/json-api/taxonomies'
+  terms: '/json-api/terms'
+  term_metatags: '/json-api/metatag/term'
+  nodes: '/json-api/nodes'
+  node: '/json-api/node'
+  node_metatags: '/json-api/metatag/node'
+  file: '/json-api/file'
+  users: '/json-api/users'

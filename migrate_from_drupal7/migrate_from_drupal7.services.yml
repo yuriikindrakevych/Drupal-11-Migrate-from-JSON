@@ -1,0 +1,4 @@
+services:
+  migrate_from_drupal7.api_client:
+    class: Drupal\migrate_from_drupal7\Service\Drupal7ApiClient
+    arguments: ['@http_client', '@config.factory', '@logger.factory']
