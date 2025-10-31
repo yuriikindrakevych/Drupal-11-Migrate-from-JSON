@@ -136,4 +136,47 @@ class Drupal7ApiClient {
     return $this->get('content_types');
   }
 
+  /**
+   * Отримати терміни словника таксономії за machine_name.
+   *
+   * @param string $machine_name
+   *   Machine name словника таксономії.
+   *
+   * @return array|null
+   *   Масив з даними словника і термінами або NULL у разі помилки.
+   */
+  public function getTermsByVocabulary($machine_name) {
+    $base_url = $this->config->get('base_url');
+
+    if (empty($base_url)) {
+      $this->logger->error('Базова URL не налаштована');
+      return NULL;
+    }
+
+    // Формуємо URL для endpoint /json-api/terms-by-name/{machine_name}.
+    $url = rtrim($base_url, '/') . '/json-api/terms-by-name/' . $machine_name;
+
+    try {
+      $response = $this->httpClient->get($url);
+      $data = json_decode($response->getBody()->getContents(), TRUE);
+
+      if (json_last_error() !== JSON_ERROR_NONE) {
+        $this->logger->error('Помилка декодування JSON з @url: @error', [
+          '@url' => $url,
+          '@error' => json_last_error_msg(),
+        ]);
+        return NULL;
+      }
+
+      return $data;
+    }
+    catch (GuzzleException $e) {
+      $this->logger->error('Помилка запиту до @url: @message', [
+        '@url' => $url,
+        '@message' => $e->getMessage(),
+      ]);
+      return NULL;
+    }
+  }
+
 }
