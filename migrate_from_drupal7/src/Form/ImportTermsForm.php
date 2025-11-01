@@ -278,8 +278,10 @@ class ImportTermsForm extends FormBase {
       'langcode' => $term_data['language'] ?? 'uk',
     ]);
 
-    // Зберігаємо старий tid у field для можливості мапінгу в майбутньому.
-    // TODO: Можна додати custom field для зберігання старого tid.
+    // Імпортуємо поля терміну.
+    if (!empty($term_data['fields']) && is_array($term_data['fields'])) {
+      self::importTermFields($term, $term_data['fields']);
+    }
 
     $term->save();
 
@@ -301,6 +303,85 @@ class ImportTermsForm extends FormBase {
     );
 
     return $term;
+  }
+
+  /**
+   * Імпортувати поля терміну.
+   *
+   * @param \Drupal\taxonomy\Entity\Term $term
+   *   Термін для якого імпортуються поля.
+   * @param array $fields_data
+   *   Дані полів з Drupal 7.
+   */
+  protected static function importTermFields(Term $term, array $fields_data) {
+    foreach ($fields_data as $field_name => $field_values) {
+      // Перевіряємо чи поле існує.
+      if (!$term->hasField($field_name)) {
+        \Drupal::logger('migrate_from_drupal7')->warning(
+          'Поле @field не існує для терміну @term. Пропускаємо.',
+          ['@field' => $field_name, '@term' => $term->getName()]
+        );
+        continue;
+      }
+
+      // Пропускаємо пусті значення.
+      if (empty($field_values)) {
+        continue;
+      }
+
+      try {
+        // Обробляємо різні типи полів.
+        $field_definition = $term->getFieldDefinition($field_name);
+        $field_type = $field_definition->getType();
+
+        $processed_values = [];
+
+        foreach ($field_values as $delta => $field_value) {
+          if (is_array($field_value)) {
+            // Текстові поля з форматом.
+            if (isset($field_value['value'])) {
+              $processed_values[] = [
+                'value' => $field_value['value'],
+                'format' => $field_value['format'] ?? 'basic_html',
+              ];
+            }
+            // Entity reference поля.
+            elseif (isset($field_value['tid']) || isset($field_value['target_id'])) {
+              $processed_values[] = [
+                'target_id' => $field_value['tid'] ?? $field_value['target_id'],
+              ];
+            }
+            // Інші поля - просто копіюємо.
+            else {
+              $processed_values[] = $field_value;
+            }
+          }
+          else {
+            // Прості значення (string, number).
+            $processed_values[] = ['value' => $field_value];
+          }
+        }
+
+        if (!empty($processed_values)) {
+          $term->set($field_name, $processed_values);
+
+          \Drupal::logger('migrate_from_drupal7')->info(
+            'Імпортовано поле @field для терміну @term',
+            ['@field' => $field_name, '@term' => $term->getName()]
+          );
+        }
+      }
+      catch (\Exception $e) {
+        \Drupal::logger('migrate_from_drupal7')->error(
+          'Помилка імпорту поля @field для терміну @term: @message',
+          [
+            '@field' => $field_name,
+            '@term' => $term->getName(),
+            '@message' => $e->getMessage(),
+          ]
+        );
+      }
+    }
   }
 
   /**
@@ -344,6 +425,12 @@ class ImportTermsForm extends FormBase {
         'format' => 'basic_html',
       ],
     ]);
+
+    // Імпортуємо поля перекладу якщо вони є.
+    if (!empty($translation_data['fields']) && is_array($translation_data['fields'])) {
+      self::importTermFields($translation, $translation_data['fields']);
+    }
+
     $translation->save();
 
     // Створюємо URL alias для перекладу якщо є в даних.
@@ -388,6 +475,15 @@ class ImportTermsForm extends FormBase {
 
       // Знаходимо новий tid батьківського терміну.
       $parent_tid_old = is_array($term_data['parent']) ? $term_data['parent'][0] : $term_data['parent'];
+
+      // Пропускаємо кореневі терміни (parent = 0).
+      if ($parent_tid_old == 0 || $parent_tid_old === '0') {
+        \Drupal::logger('migrate_from_drupal7')->info(
+          'Термін @term є кореневим (parent = 0)',
+          ['@term' => $term_data['name']]
+        );
+        continue;
+      }
 
       if (!isset($tid_map[$parent_tid_old])) {
         \Drupal::logger('migrate_from_drupal7')->warning(
