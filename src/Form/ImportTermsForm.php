@@ -90,6 +90,13 @@ class ImportTermsForm extends FormBase {
       $form['vocabularies']['#options'][$vocabulary->id()] = $vocabulary->label() . ' (' . $vocabulary->id() . ')';
     }
 
+    $form['delete_existing'] = [
+      '#type' => 'checkbox',
+      '#title' => $this->t('Видалити існуючі терміни перед імпортом'),
+      '#description' => $this->t('УВАГА: Це видалить всі існуючі терміни у вибраних словниках перед імпортом нових. Використовуйте обережно!'),
+      '#default_value' => FALSE,
+    ];
+
     $form['actions'] = [
       '#type' => 'actions',
     ];
@@ -108,6 +115,7 @@ class ImportTermsForm extends FormBase {
    */
   public function submitForm(array &$form, FormStateInterface $form_state) {
     $selected_vocabularies = array_filter($form_state->getValue('vocabularies'));
+    $delete_existing = $form_state->getValue('delete_existing');
 
     if (empty($selected_vocabularies)) {
       $this->messenger()->addWarning($this->t('Не вибрано жодного словника для імпорту.'));
@@ -116,6 +124,17 @@ class ImportTermsForm extends FormBase {
 
     $operations = [];
 
+    // Якщо потрібно видалити існуючі терміни, додаємо операцію видалення.
+    if ($delete_existing) {
+      foreach ($selected_vocabularies as $vocabulary_id) {
+        $operations[] = [
+          [self::class, 'batchDeleteTerms'],
+          [$vocabulary_id],
+        ];
+      }
+    }
+
+    // Додаємо операції імпорту.
     foreach ($selected_vocabularies as $vocabulary_id) {
       $operations[] = [
         [self::class, 'batchImportTerms'],
@@ -213,7 +232,8 @@ class ImportTermsForm extends FormBase {
 
       // Після імпорту всіх термінів налаштовуємо ієрархію.
       if ($context['sandbox']['current'] >= $context['sandbox']['total']) {
-        self::setupHierarchy($data['terms'], $context['sandbox']['tid_map'], $vocabulary_id);
+        // Використовуємо терміни з sandbox, а не з $data.
+        self::setupHierarchy($context['sandbox']['terms'], $context['sandbox']['tid_map'], $vocabulary_id);
         $context['finished'] = 1;
       }
       else {
@@ -263,6 +283,14 @@ class ImportTermsForm extends FormBase {
 
     if (!empty($existing_terms)) {
       $term = reset($existing_terms);
+      \Drupal::logger('migrate_from_drupal7')->info(
+        'Термін @name вже існує (tid: @new_tid, старий tid: @old_tid)',
+        [
+          '@name' => $term_data['name'],
+          '@new_tid' => $term->id(),
+          '@old_tid' => $term_data['tid'],
+        ]
+      );
       return $term;
     }
 
@@ -460,35 +488,57 @@ class ImportTermsForm extends FormBase {
   protected static function setupHierarchy(array $terms, array $tid_map, $vocabulary_id) {
     $entity_type_manager = \Drupal::entityTypeManager();
 
+    \Drupal::logger('migrate_from_drupal7')->info(
+      'Початок налаштування ієрархії для @count термінів. Мапінг містить @map_count записів.',
+      ['@count' => count($terms), '@map_count' => count($tid_map)]
+    );
+
     foreach ($terms as $term_data) {
       // Пропускаємо терміни без батьківського елемента.
-      if (empty($term_data['parent']) || $term_data['parent'] === null) {
+      if (!isset($term_data['parent']) || $term_data['parent'] === null) {
+        \Drupal::logger('migrate_from_drupal7')->debug(
+          'Термін @term (@tid) не має поля parent',
+          ['@term' => $term_data['name'], '@tid' => $term_data['tid']]
+        );
         continue;
       }
 
       // Знаходимо новий tid терміну.
       if (!isset($tid_map[$term_data['tid']])) {
+        \Drupal::logger('migrate_from_drupal7')->warning(
+          'Не знайдено мапінг для терміну @term (старий tid: @tid)',
+          ['@term' => $term_data['name'], '@tid' => $term_data['tid']]
+        );
         continue;
       }
 
       $new_tid = $tid_map[$term_data['tid']];
 
       // Знаходимо новий tid батьківського терміну.
+      // В JSON parent - це масив, наприклад ["1"] або [0].
       $parent_tid_old = is_array($term_data['parent']) ? $term_data['parent'][0] : $term_data['parent'];
 
       // Пропускаємо кореневі терміни (parent = 0).
       if ($parent_tid_old == 0 || $parent_tid_old === '0') {
         \Drupal::logger('migrate_from_drupal7')->info(
-          'Термін @term є кореневим (parent = 0)',
-          ['@term' => $term_data['name']]
+          'Термін @term (@tid) є кореневим (parent = @parent)',
+          [
+            '@term' => $term_data['name'],
+            '@tid' => $term_data['tid'],
+            '@parent' => $parent_tid_old,
+          ]
         );
         continue;
       }
 
       if (!isset($tid_map[$parent_tid_old])) {
         \Drupal::logger('migrate_from_drupal7')->warning(
-          'Не знайдено батьківський термін @parent для терміну @term',
-          ['@parent' => $parent_tid_old, '@term' => $term_data['name']]
+          'Не знайдено батьківський термін для @term (старий parent tid: @parent, старий tid: @tid)',
+          [
+            '@term' => $term_data['name'],
+            '@parent' => $parent_tid_old,
+            '@tid' => $term_data['tid'],
+          ]
         );
         continue;
       }
@@ -502,11 +552,28 @@ class ImportTermsForm extends FormBase {
         $term->save();
 
         \Drupal::logger('migrate_from_drupal7')->info(
-          'Встановлено батьківський термін для @term (parent: @parent)',
-          ['@term' => $term_data['name'], '@parent' => $new_parent_tid]
+          'Встановлено ієрархію: @term (новий tid: @new_tid, старий tid: @old_tid) -> parent (новий tid: @new_parent, старий tid: @old_parent)',
+          [
+            '@term' => $term_data['name'],
+            '@new_tid' => $new_tid,
+            '@old_tid' => $term_data['tid'],
+            '@new_parent' => $new_parent_tid,
+            '@old_parent' => $parent_tid_old,
+          ]
+        );
+      }
+      else {
+        \Drupal::logger('migrate_from_drupal7')->error(
+          'Не вдалося завантажити термін @term (новий tid: @tid)',
+          ['@term' => $term_data['name'], '@tid' => $new_tid]
         );
       }
     }
+
+    \Drupal::logger('migrate_from_drupal7')->info(
+      'Завершено налаштування ієрархії для словника @vocab',
+      ['@vocab' => $vocabulary_id]
+    );
   }
 
   /**
@@ -558,6 +625,98 @@ class ImportTermsForm extends FormBase {
   }
 
   /**
+   * Batch операція для видалення існуючих термінів словника.
+   *
+   * @param string $vocabulary_id
+   *   Machine name словника.
+   * @param array $context
+   *   Контекст batch операції.
+   */
+  public static function batchDeleteTerms($vocabulary_id, array &$context) {
+    $entity_type_manager = \Drupal::entityTypeManager();
+
+    try {
+      // Завантажуємо словник.
+      $vocabulary = $entity_type_manager
+        ->getStorage('taxonomy_vocabulary')
+        ->load($vocabulary_id);
+
+      if (!$vocabulary) {
+        throw new \Exception('Словник не знайдено: ' . $vocabulary_id);
+      }
+
+      // Ініціалізуємо sandbox.
+      if (!isset($context['sandbox']['progress'])) {
+        // Отримуємо всі терміни словника.
+        $term_ids = $entity_type_manager
+          ->getStorage('taxonomy_term')
+          ->getQuery()
+          ->condition('vid', $vocabulary_id)
+          ->accessCheck(FALSE)
+          ->execute();
+
+        $context['sandbox']['term_ids'] = array_values($term_ids);
+        $context['sandbox']['total'] = count($term_ids);
+        $context['sandbox']['progress'] = 0;
+        $context['sandbox']['vocabulary_name'] = $vocabulary->label();
+
+        \Drupal::logger('migrate_from_drupal7')->info(
+          'Початок видалення @count термінів зі словника @vocab',
+          ['@count' => $context['sandbox']['total'], '@vocab' => $vocabulary->label()]
+        );
+      }
+
+      // Видаляємо терміни партіями по 20 штук.
+      $terms_to_delete = array_slice(
+        $context['sandbox']['term_ids'],
+        $context['sandbox']['progress'],
+        20
+      );
+
+      if (!empty($terms_to_delete)) {
+        $terms = $entity_type_manager
+          ->getStorage('taxonomy_term')
+          ->loadMultiple($terms_to_delete);
+
+        foreach ($terms as $term) {
+          $term->delete();
+          $context['sandbox']['progress']++;
+        }
+      }
+
+      // Оновлюємо прогрес.
+      if ($context['sandbox']['progress'] >= $context['sandbox']['total']) {
+        $context['finished'] = 1;
+        $context['results']['deleted'][$vocabulary_id] = $context['sandbox']['total'];
+
+        \Drupal::logger('migrate_from_drupal7')->info(
+          'Видалено @count термінів зі словника @vocab',
+          ['@count' => $context['sandbox']['total'], '@vocab' => $vocabulary->label()]
+        );
+      }
+      else {
+        $context['finished'] = $context['sandbox']['progress'] / $context['sandbox']['total'];
+      }
+
+      $context['message'] = t(
+        'Видалено термінів: @current з @total (@vocabulary)',
+        [
+          '@current' => $context['sandbox']['progress'],
+          '@total' => $context['sandbox']['total'],
+          '@vocabulary' => $context['sandbox']['vocabulary_name'],
+        ]
+      );
+    }
+    catch (\Exception $e) {
+      \Drupal::logger('migrate_from_drupal7')->error(
+        'Помилка видалення термінів словника @vocab: @message',
+        ['@vocab' => $vocabulary_id, '@message' => $e->getMessage()]
+      );
+      $context['results']['errors'][] = 'Помилка видалення термінів словника ' . $vocabulary_id . ': ' . $e->getMessage();
+    }
+  }
+
+  /**
    * Batch завершено.
    *
    * @param bool $success
@@ -571,19 +730,34 @@ class ImportTermsForm extends FormBase {
     $messenger = \Drupal::messenger();
 
     if ($success) {
+      // Повідомлення про видалені терміни.
+      if (!empty($results['deleted'])) {
+        $total_deleted = array_sum($results['deleted']);
+        $messenger->addStatus(t('Видалено термінів: @count', ['@count' => $total_deleted]));
+
+        foreach ($results['deleted'] as $vocab => $count) {
+          $messenger->addStatus(t('Словник @vocab: видалено @count термінів', ['@vocab' => $vocab, '@count' => $count]));
+        }
+      }
+
+      // Повідомлення про імпортовані терміни.
       if (!empty($results['imported'])) {
         $total = array_sum($results['imported']);
         $messenger->addStatus(t('Імпортовано термінів: @count', ['@count' => $total]));
 
         foreach ($results['imported'] as $vocab => $count) {
-          $messenger->addStatus(t('Словник @vocab: @count термінів', ['@vocab' => $vocab, '@count' => $count]));
+          $messenger->addStatus(t('Словник @vocab: імпортовано @count термінів', ['@vocab' => $vocab, '@count' => $count]));
         }
       }
+
+      // Попередження про пропущені словники.
       if (!empty($results['skipped'])) {
         foreach ($results['skipped'] as $message) {
           $messenger->addWarning($message);
         }
       }
+
+      // Помилки.
       if (!empty($results['errors'])) {
         $messenger->addError(t('Помилки: @count', ['@count' => count($results['errors'])]));
         foreach ($results['errors'] as $error) {
