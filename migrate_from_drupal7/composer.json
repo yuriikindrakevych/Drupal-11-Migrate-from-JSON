@@ -1,0 +1,10 @@
+{
+  "name": "yuriikindrakevych/migrate_from_drupal7",
+  "type": "drupal-custom-module",
+  "description": "Модуль для міграції даних з Drupal 7 в Drupal 11",
+  "keywords": ["Drupal", "migration", "Drupal 7"],
+  "license": "GPL-2.0-or-later",
+  "require": {
+    "drupal/core": "^10 || ^11"
+  }
+}
