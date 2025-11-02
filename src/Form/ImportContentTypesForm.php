@@ -277,7 +277,14 @@ class ImportContentTypesForm extends FormBase {
    *   Дані типу контенту з Drupal 7.
    */
   protected static function configureContentTranslation($type_id, array $content_type_data) {
-    // Перевіряємо чи ввімкнено модуль content_translation.
+    // Перевіряємо чи в Drupal 7 була ввімкнена багатомовність.
+    $multilingual_enabled = $content_type_data['multilingual_enabled'] ?? false;
+    $translation_mode = $content_type_data['translation_mode'] ?? '';
+
+    if (!$multilingual_enabled || $translation_mode !== 'enabled_with_translation') {
+      return;
+    }
+
     $module_handler = \Drupal::service('module_handler');
     if (!$module_handler->moduleExists('content_translation')) {
       \Drupal::logger('migrate_from_drupal7')->warning(
@@ -288,20 +295,12 @@ class ImportContentTypesForm extends FormBase {
     }
 
     try {
-      // Завантажуємо або створюємо налаштування мови для типу контенту.
       $config = \Drupal::service('language.content_settings_manager')
         ->loadContentLanguageSettings('node', $type_id);
 
-      // Встановлюємо мову за замовчуванням (Українська).
       $config->setDefaultLangcode('uk');
-
-      // Вимагати вибір мови (не дозволяти Language Neutral).
       $config->setLanguageAlterable(TRUE);
-
-      // Ввімкнути підтримку перекладів для цього типу контенту.
       $config->setThirdPartySetting('content_translation', 'enabled', TRUE);
-
-      // Збереження налаштувань.
       $config->save();
 
       \Drupal::logger('migrate_from_drupal7')->info(
