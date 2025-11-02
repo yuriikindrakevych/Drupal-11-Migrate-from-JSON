@@ -1,0 +1,131 @@
+<?php
+
+/**
+ * @file
+ * Модуль для міграції даних з Drupal 7.
+ */
+
+use Drupal\Core\Routing\RouteMatchInterface;
+
+/**
+ * Implements hook_help().
+ */
+function migrate_from_drupal7_help($route_name, RouteMatchInterface $route_match) {
+  switch ($route_name) {
+    case 'help.page.migrate_from_drupal7':
+      $output = '<h3>' . t('Міграція з Drupal 7') . '</h3>';
+      $output .= '<p>' . t('Модуль для імпорту даних з Drupal 7 через JSON API.') . '</p>';
+      $output .= '<h4>' . t('Можливості:') . '</h4>';
+      $output .= '<ul>';
+      $output .= '<li>' . t('Імпорт словників та термінів таксономії') . '</li>';
+      $output .= '<li>' . t('Імпорт типів матеріалів та полів') . '</li>';
+      $output .= '<li>' . t('Автоматичне оновлення через cron') . '</li>';
+      $output .= '<li>' . t('Логування всіх операцій') . '</li>';
+      $output .= '</ul>';
+      return $output;
+  }
+}
+
+/**
+ * Implements hook_cron().
+ */
+function migrate_from_drupal7_cron() {
+  $config = \Drupal::config('migrate_from_drupal7.cron');
+  $log_service = \Drupal::service('migrate_from_drupal7.log');
+
+  // Перевіряємо чи увімкнений cron імпорт.
+  if (!$config->get('enabled')) {
+    return;
+  }
+
+  $run_hour = $config->get('run_hour') ?? 3;
+  $interval = $config->get('interval') ?? 'daily';
+  $last_run = $config->get('last_run');
+  $vocabularies = $config->get('vocabularies') ?? [];
+
+  if (empty($vocabularies)) {
+    return;
+  }
+
+  $now = \Drupal::time()->getRequestTime();
+  $current_hour = (int) date('G', $now);
+
+  // Перевіряємо чи настав час для запуску.
+  $should_run = FALSE;
+
+  if (!$last_run) {
+    // Якщо ніколи не запускався - запускаємо якщо зараз потрібна година.
+    $should_run = ($current_hour == $run_hour);
+  }
+  else {
+    // Перевіряємо інтервал.
+    $time_since_last_run = $now - $last_run;
+
+    switch ($interval) {
+      case 'daily':
+        // Запускаємо якщо минуло більше 23 годин і зараз потрібна година.
+        $should_run = ($time_since_last_run > 82800 && $current_hour == $run_hour);
+        break;
+
+      case 'weekly':
+        // Запускаємо якщо минув тиждень і зараз потрібна година.
+        $should_run = ($time_since_last_run > 604800 && $current_hour == $run_hour);
+        break;
+
+      case 'monthly':
+        // Запускаємо якщо минув місяць і зараз потрібна година.
+        $should_run = ($time_since_last_run > 2592000 && $current_hour == $run_hour);
+        break;
+    }
+  }
+
+  if (!$should_run) {
+    return;
+  }
+
+  // Логуємо початок cron імпорту.
+  \Drupal::logger('migrate_from_drupal7')->info('Cron: початок автоматичного імпорту');
+  $log_service->log(
+    'cron',
+    'term',
+    'success',
+    'Початок автоматичного імпорту через cron',
+    NULL,
+    ['vocabularies' => $vocabularies, 'interval' => $interval],
+    0
+  );
+
+  // Запускаємо batch імпорт для кожного словника.
+  $batch = [
+    'title' => t('Автоматичний імпорт через cron'),
+    'operations' => [],
+    'finished' => '\Drupal\migrate_from_drupal7\Form\ImportTermsForm::batchFinished',
+    'progressive' => FALSE,  // Запускаємо в фоні без UI
+  ];
+
+  foreach ($vocabularies as $vocabulary_id) {
+    if (!empty($vocabulary_id)) {
+      $batch['operations'][] = [
+        '\Drupal\migrate_from_drupal7\Form\ImportTermsForm::batchImportTerms',
+        [$vocabulary_id],
+      ];
+    }
+  }
+
+  batch_set($batch);
+
+  // Оновлюємо час останнього запуску.
+  \Drupal::configFactory()
+    ->getEditable('migrate_from_drupal7.cron')
+    ->set('last_run', $now)
+    ->save();
+
+  // Запускаємо batch.
+  $batch =& batch_get();
+  $batch['progressive'] = FALSE;
+
+  \Drupal::logger('migrate_from_drupal7')->info(
+    'Cron: запущено імпорт для @count словників',
+    ['@count' => count($vocabularies)]
+  );
+}

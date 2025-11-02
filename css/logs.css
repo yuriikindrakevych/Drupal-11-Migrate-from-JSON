@@ -1,0 +1,97 @@
+/* Статистика логів */
+.log-statistics {
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #f5f5f5;
+  border-radius: 4px;
+}
+
+.log-stats {
+  display: flex;
+  gap: 30px;
+  flex-wrap: wrap;
+}
+
+.log-stats .stat {
+  font-size: 14px;
+}
+
+.log-stats .stat-success {
+  color: #28a745;
+}
+
+.log-stats .stat-error {
+  color: #dc3545;
+}
+
+.log-stats .stat-warning {
+  color: #ffc107;
+}
+
+/* Таблиця логів */
+.migrate-logs-table {
+  width: 100%;
+  font-size: 13px;
+}
+
+.migrate-logs-table th {
+  background: #f5f5f5;
+  font-weight: 600;
+  padding: 10px;
+  text-align: left;
+}
+
+.migrate-logs-table td {
+  padding: 8px;
+  vertical-align: top;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.migrate-logs-table pre {
+  margin: 0;
+  padding: 5px;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 3px;
+  font-size: 11px;
+  max-width: 400px;
+  overflow: auto;
+}
+
+/* Статуси */
+.badge {
+  display: inline-block;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 3px;
+  text-align: center;
+}
+
+.badge-success {
+  background: #d4edda;
+  color: #155724;
+}
+
+.badge-error {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.badge-warning {
+  background: #fff3cd;
+  color: #856404;
+}
+
+/* Рядки таблиці */
+tr.log-status-error {
+  background: #fff5f5;
+}
+
+tr.log-status-warning {
+  background: #fffbf0;
+}
+
+tr.log-status-success {
+  /* default background */
+}

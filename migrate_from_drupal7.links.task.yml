@@ -21,3 +21,15 @@ migrate_from_drupal7.import_terms:
   base_route: migrate_from_drupal7.overview
   title: 'Імпорт термінів таксономії'
   weight: 10
+
+migrate_from_drupal7.cron_settings:
+  route_name: migrate_from_drupal7.cron_settings
+  base_route: migrate_from_drupal7.overview
+  title: 'Автоматичний імпорт (Cron)'
+  weight: 15
+
+migrate_from_drupal7.logs:
+  route_name: migrate_from_drupal7.logs
+  base_route: migrate_from_drupal7.overview
+  title: 'Логування'
+  weight: 20

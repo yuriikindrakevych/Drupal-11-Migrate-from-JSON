@@ -4,3 +4,11 @@ import-taxonomy:
     js/import-taxonomy.js: {}
   dependencies:
     - core/drupal
+
+logs:
+  version: 1.x
+  css:
+    theme:
+      css/logs.css: {}
+  dependencies:
+    - core/drupal
