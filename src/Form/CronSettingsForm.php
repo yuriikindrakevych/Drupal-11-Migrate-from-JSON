@@ -138,6 +138,48 @@ class CronSettingsForm extends ConfigFormBase {
       }
     }
 
+    // Налаштування матеріалів.
+    $form['nodes'] = [
+      '#type' => 'details',
+      '#title' => $this->t('Матеріали для імпорту'),
+      '#open' => TRUE,
+      '#states' => [
+        'visible' => [
+          ':input[name="enabled"]' => ['checked' => TRUE],
+        ],
+      ],
+    ];
+
+    $node_types = $this->entityTypeManager
+      ->getStorage('node_type')
+      ->loadMultiple();
+
+    if (empty($node_types)) {
+      $form['nodes']['message'] = [
+        '#markup' => '<p>' . $this->t('Не знайдено жодного типу матеріалу.') . '</p>',
+      ];
+    }
+    else {
+      $form['nodes']['node_types'] = [
+        '#type' => 'checkboxes',
+        '#title' => $this->t('Типи матеріалів для автоматичного імпорту'),
+        '#options' => [],
+        '#default_value' => $config->get('node_types') ?? [],
+        '#description' => $this->t('Виберіть типи матеріалів, які потрібно оновлювати автоматично через cron.'),
+      ];
+
+      foreach ($node_types as $node_type) {
+        $form['nodes']['node_types']['#options'][$node_type->id()] = $node_type->label() . ' (' . $node_type->id() . ')';
+      }
+
+      $form['nodes']['skip_unchanged'] = [
+        '#type' => 'checkbox',
+        '#title' => $this->t('Пропускати незмінені матеріали'),
+        '#default_value' => $config->get('skip_unchanged') ?? TRUE,
+        '#description' => $this->t('Якщо увімкнено, матеріали що не змінились (за полем "changed") не будуть оновлюватися.'),
+      ];
+    }
+
     // Статус останнього запуску.
     $form['status'] = [
       '#type' => 'details',
@@ -181,6 +223,8 @@ class CronSettingsForm extends ConfigFormBase {
       ->set('run_hour', (int) $form_state->getValue('run_hour'))
       ->set('interval', $form_state->getValue('interval'))
       ->set('vocabularies', array_filter($form_state->getValue('vocabularies', [])))
+      ->set('node_types', array_filter($form_state->getValue('node_types', [])))
+      ->set('skip_unchanged', (bool) $form_state->getValue('skip_unchanged'))
       ->save();
 
     parent::submitForm($form, $form_state);

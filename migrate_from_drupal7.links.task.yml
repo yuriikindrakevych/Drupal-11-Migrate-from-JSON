@@ -22,6 +22,12 @@ migrate_from_drupal7.import_terms:
   title: 'Імпорт термінів таксономії'
   weight: 10
 
+migrate_from_drupal7.import_nodes:
+  route_name: migrate_from_drupal7.import_nodes
+  base_route: migrate_from_drupal7.overview
+  title: 'Імпорт матеріалів'
+  weight: 12
+
 migrate_from_drupal7.cron_settings:
   route_name: migrate_from_drupal7.cron_settings
   base_route: migrate_from_drupal7.overview

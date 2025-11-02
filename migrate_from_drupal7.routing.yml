@@ -30,6 +30,14 @@ migrate_from_drupal7.import_terms:
   requirements:
     _permission: 'administer site configuration'
 
+migrate_from_drupal7.import_nodes:
+  path: '/admin/config/content/migrate-drupal7/import-nodes'
+  defaults:
+    _form: '\Drupal\migrate_from_drupal7\Form\ImportNodesForm'
+    _title: 'Імпорт матеріалів'
+  requirements:
+    _permission: 'administer site configuration'
+
 migrate_from_drupal7.overview:
   path: '/admin/config/content/migrate-drupal7'
   defaults:
