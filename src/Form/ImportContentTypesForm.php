@@ -226,6 +226,7 @@ class ImportContentTypesForm extends FormBase {
     try {
       // Перевіряємо чи існує тип контенту.
       $node_type = NodeType::load($type_id);
+      $is_new = FALSE;
 
       if (!$node_type) {
         // Створюємо новий тип контенту.
@@ -235,12 +236,16 @@ class ImportContentTypesForm extends FormBase {
           'description' => $content_type_data['description'] ?? '',
         ]);
         $node_type->save();
+        $is_new = TRUE;
 
         $context['results']['created'][] = $content_type_data['name'];
       }
       else {
         $context['results']['updated'][] = $content_type_data['name'];
       }
+
+      // ВАЖЛИВО: Налаштовуємо багатомовність для типу контенту.
+      self::configureContentTranslation($type_id, $content_type_data);
 
       // Імпорт полів.
       if (!empty($selected_fields) && !empty($content_type_data['fields'])) {
@@ -260,6 +265,55 @@ class ImportContentTypesForm extends FormBase {
         '@message' => $e->getMessage(),
       ]);
       $context['results']['errors'][] = $content_type_data['name'] . ': ' . $e->getMessage();
+    }
+  }
+
+  /**
+   * Налаштувати багатомовність для типу контенту.
+   *
+   * @param string $type_id
+   *   ID типу контенту.
+   * @param array $content_type_data
+   *   Дані типу контенту з Drupal 7.
+   */
+  protected static function configureContentTranslation($type_id, array $content_type_data) {
+    // Перевіряємо чи ввімкнено модуль content_translation.
+    $module_handler = \Drupal::service('module_handler');
+    if (!$module_handler->moduleExists('content_translation')) {
+      \Drupal::logger('migrate_from_drupal7')->warning(
+        'Модуль content_translation не ввімкнено. Багатомовність для типу @type не буде налаштована.',
+        ['@type' => $type_id]
+      );
+      return;
+    }
+
+    try {
+      // Завантажуємо або створюємо налаштування мови для типу контенту.
+      $config = \Drupal::service('language.content_settings_manager')
+        ->loadContentLanguageSettings('node', $type_id);
+
+      // Встановлюємо мову за замовчуванням (Українська).
+      $config->setDefaultLangcode('uk');
+
+      // Вимагати вибір мови (не дозволяти Language Neutral).
+      $config->setLanguageAlterable(TRUE);
+
+      // Ввімкнути підтримку перекладів для цього типу контенту.
+      $config->setThirdPartySetting('content_translation', 'enabled', TRUE);
+
+      // Збереження налаштувань.
+      $config->save();
+
+      \Drupal::logger('migrate_from_drupal7')->info(
+        'Налаштовано багатомовність для типу контенту @type',
+        ['@type' => $type_id]
+      );
+    }
+    catch (\Exception $e) {
+      \Drupal::logger('migrate_from_drupal7')->error(
+        'Помилка налаштування багатомовності для типу @type: @message',
+        ['@type' => $type_id, '@message' => $e->getMessage()]
+      );
     }
   }
 
@@ -316,6 +370,12 @@ class ImportContentTypesForm extends FormBase {
       }
 
       $field_storage = FieldStorageConfig::create($storage_settings);
+      $field_storage->save();
+    }
+
+    // Робимо поле перекладним (translatable).
+    if (!$field_storage->isTranslatable()) {
+      $field_storage->setTranslatable(TRUE);
       $field_storage->save();
     }
 
