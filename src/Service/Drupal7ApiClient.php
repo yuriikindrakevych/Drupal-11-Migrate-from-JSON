@@ -190,8 +190,8 @@ class Drupal7ApiClient {
    *   Зсув для пагінації (за замовчуванням 0).
    *
    * @return array|null
-   *   Масив з nodes або NULL у разі помилки.
-   *   Формат: ['nodes' => [...], 'total' => int]
+   *   Масив nodes або NULL у разі помилки.
+   *   API повертає просто масив: [{nid, title, ...}, ...]
    */
   public function getNodes($type, $limit = 10, $offset = 0) {
     $base_url = $this->config->get('base_url');
@@ -220,6 +220,12 @@ class Drupal7ApiClient {
           '@error' => json_last_error_msg(),
         ]);
         return NULL;
+      }
+
+      // API повертає просто масив, обгортаємо в очікуваний формат.
+      // Якщо це вже масив - повертаємо як є.
+      if (is_array($data) && !isset($data['nodes'])) {
+        return $data;
       }
 
       return $data;

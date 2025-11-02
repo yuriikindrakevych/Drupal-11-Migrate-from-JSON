@@ -192,17 +192,27 @@ class ImportNodesForm extends FormBase {
 
     // Ініціалізація.
     if (!isset($context['sandbox']['progress'])) {
-      // Отримуємо перший запит для підрахунку total.
-      $initial_data = $api_client->getNodes($node_type, 1, 0);
+      // API повертає просто масив без total.
+      // Отримуємо всі NID одним запитом для підрахунку.
+      $initial_data = $api_client->getNodes($node_type, 9999, 0);
 
-      if (empty($initial_data) || !isset($initial_data['total'])) {
-        $context['results']['skipped'][] = $node_type;
+      // Логуємо отриману відповідь для діагностики.
+      \Drupal::logger('migrate_from_drupal7')->info(
+        'API відповідь для типу @type: отримано @count записів',
+        [
+          '@type' => $node_type,
+          '@count' => is_array($initial_data) ? count($initial_data) : 0,
+        ]
+      );
+
+      if (empty($initial_data) || !is_array($initial_data)) {
+        $context['results']['errors'][$node_type] = 1;
         $context['finished'] = 1;
 
         $log_service->logError(
           'import',
           'node',
-          "Не вдалося отримати матеріали типу $node_type",
+          "Не вдалося отримати матеріали типу $node_type або API повернув порожній масив",
           NULL,
           ['node_type' => $node_type]
         );
@@ -210,7 +220,9 @@ class ImportNodesForm extends FormBase {
         return;
       }
 
-      $context['sandbox']['total'] = (int) $initial_data['total'];
+      // Зберігаємо всі NID для обробки.
+      $context['sandbox']['all_nodes'] = $initial_data;
+      $context['sandbox']['total'] = count($initial_data);
       $context['sandbox']['progress'] = 0;
       $context['sandbox']['node_type'] = $node_type;
       $context['sandbox']['batch_size'] = $batch_size;
@@ -240,17 +252,25 @@ class ImportNodesForm extends FormBase {
       );
     }
 
-    // Отримуємо порцію NID.
-    $offset = $context['sandbox']['progress'];
-    $data = $api_client->getNodes($node_type, $batch_size, $offset);
+    // Беремо порцію з вже завантаженого масиву.
+    $nodes_to_process = array_slice(
+      $context['sandbox']['all_nodes'],
+      $context['sandbox']['progress'],
+      $batch_size
+    );
 
-    if (empty($data) || empty($data['nodes'])) {
+    if (empty($nodes_to_process)) {
+      // Зберігаємо результати.
+      $context['results']['imported'][$node_type] = $context['sandbox']['imported'];
+      $context['results']['updated'][$node_type] = $context['sandbox']['updated'];
+      $context['results']['skipped'][$node_type] = $context['sandbox']['skipped'];
+      $context['results']['errors'][$node_type] = $context['sandbox']['errors'];
       $context['finished'] = 1;
       return;
     }
 
     // Обробляємо кожен node.
-    foreach ($data['nodes'] as $node_preview) {
+    foreach ($nodes_to_process as $node_preview) {
       try {
         // Отримуємо повні дані node.
         $node_data = $api_client->getNodeById($node_preview['nid']);
@@ -429,19 +449,29 @@ class ImportNodesForm extends FormBase {
       'changed' => $node_data['changed'] ?? \Drupal::time()->getRequestTime(),
     ];
 
-    // Додаємо body якщо є.
-    if (!empty($node_data['body'])) {
+    // Body може бути в fields.body або на верхньому рівні.
+    $body_data = NULL;
+    if (!empty($node_data['fields']['body'][0])) {
+      $body_data = $node_data['fields']['body'][0];
+    }
+    elseif (!empty($node_data['body'])) {
+      $body_data = $node_data['body'];
+    }
+
+    if ($body_data) {
       $values['body'] = [
-        'value' => $node_data['body']['value'] ?? '',
-        'format' => $node_data['body']['format'] ?? 'basic_html',
+        'value' => $body_data['value'] ?? '',
+        'format' => $body_data['format'] ?? 'full_html',
       ];
     }
 
     $node = Node::create($values);
 
-    // Імпортуємо додаткові поля.
+    // Імпортуємо додаткові поля (окрім body який вже додали).
     if (!empty($node_data['fields'])) {
-      self::importFields($node, $node_data['fields']);
+      $fields_to_import = $node_data['fields'];
+      unset($fields_to_import['body']);  // body вже імпортували
+      self::importFields($node, $fields_to_import);
     }
 
     return $node;
@@ -457,17 +487,27 @@ class ImportNodesForm extends FormBase {
     $node->set('sticky', $node_data['sticky'] ?? 0);
     $node->set('changed', $node_data['changed'] ?? \Drupal::time()->getRequestTime());
 
-    // Оновлюємо body.
-    if (!empty($node_data['body'])) {
+    // Body може бути в fields.body або на верхньому рівні.
+    $body_data = NULL;
+    if (!empty($node_data['fields']['body'][0])) {
+      $body_data = $node_data['fields']['body'][0];
+    }
+    elseif (!empty($node_data['body'])) {
+      $body_data = $node_data['body'];
+    }
+
+    if ($body_data) {
       $node->set('body', [
-        'value' => $node_data['body']['value'] ?? '',
-        'format' => $node_data['body']['format'] ?? 'basic_html',
+        'value' => $body_data['value'] ?? '',
+        'format' => $body_data['format'] ?? 'full_html',
       ]);
     }
 
-    // Оновлюємо додаткові поля.
+    // Оновлюємо додаткові поля (окрім body).
     if (!empty($node_data['fields'])) {
-      self::importFields($node, $node_data['fields']);
+      $fields_to_import = $node_data['fields'];
+      unset($fields_to_import['body']);  // body вже імпортували
+      self::importFields($node, $fields_to_import);
     }
   }
 
@@ -493,8 +533,16 @@ class ImportNodesForm extends FormBase {
           switch ($field_type) {
             case 'entity_reference':
               // Для таксономії - маппінг tid.
-              if (isset($field_value['target_id'])) {
-                $old_tid = $field_value['target_id'];
+              // Drupal 7 може повертати як {"tid": "123"} так і {"target_id": "123"}
+              $old_id = NULL;
+              if (isset($field_value['tid'])) {
+                $old_id = $field_value['tid'];
+              }
+              elseif (isset($field_value['target_id'])) {
+                $old_id = $field_value['target_id'];
+              }
+
+              if ($old_id) {
                 $target_type = $field_definition->getSetting('target_type');
 
                 if ($target_type === 'taxonomy_term') {
@@ -502,14 +550,22 @@ class ImportNodesForm extends FormBase {
                   $vocabulary = $field_definition->getSetting('handler_settings')['target_bundles'] ?? [];
                   $vocabulary = reset($vocabulary);
 
-                  $new_tid = $mapping_service->getNewId('term', (string) $old_tid, $vocabulary);
+                  $new_tid = $mapping_service->getNewId('term', (string) $old_id, $vocabulary);
 
                   if ($new_tid) {
                     $processed_values[] = ['target_id' => $new_tid];
                   }
+                  else {
+                    // Якщо не знайдено маппінг - пропускаємо.
+                    \Drupal::logger('migrate_from_drupal7')->warning(
+                      'Не знайдено маппінг для tid @tid в полі @field',
+                      ['@tid' => $old_id, '@field' => $field_name]
+                    );
+                  }
                 }
                 else {
-                  $processed_values[] = $field_value;
+                  // Інші entity_reference - просто передаємо.
+                  $processed_values[] = ['target_id' => $old_id];
                 }
               }
               break;
@@ -518,7 +574,7 @@ class ImportNodesForm extends FormBase {
             case 'text_with_summary':
               $processed_values[] = [
                 'value' => $field_value['value'] ?? '',
-                'format' => $field_value['format'] ?? 'basic_html',
+                'format' => $field_value['format'] ?? 'full_html',
               ];
               break;
 
@@ -528,8 +584,24 @@ class ImportNodesForm extends FormBase {
               // Поки що пропускаємо.
               break;
 
+            case 'string':
+            case 'integer':
+            case 'decimal':
+            case 'float':
+              // Прості value поля.
+              if (isset($field_value['value'])) {
+                $processed_values[] = ['value' => $field_value['value']];
+              }
+              break;
+
             default:
-              $processed_values[] = $field_value;
+              // Для інших типів - передаємо як є.
+              if (isset($field_value['value'])) {
+                $processed_values[] = ['value' => $field_value['value']];
+              }
+              else {
+                $processed_values[] = $field_value;
+              }
               break;
           }
         }
@@ -591,10 +663,24 @@ class ImportNodesForm extends FormBase {
     $log_service = \Drupal::service('migrate_from_drupal7.log');
 
     if ($success) {
-      $total_imported = array_sum($results['imported'] ?? []);
-      $total_updated = array_sum($results['updated'] ?? []);
-      $total_skipped = array_sum($results['skipped'] ?? []);
-      $total_errors = array_sum($results['errors'] ?? []);
+      // Безпечний підрахунок результатів.
+      $total_imported = 0;
+      $total_updated = 0;
+      $total_skipped = 0;
+      $total_errors = 0;
+
+      if (!empty($results['imported']) && is_array($results['imported'])) {
+        $total_imported = array_sum(array_filter($results['imported'], 'is_numeric'));
+      }
+      if (!empty($results['updated']) && is_array($results['updated'])) {
+        $total_updated = array_sum(array_filter($results['updated'], 'is_numeric'));
+      }
+      if (!empty($results['skipped']) && is_array($results['skipped'])) {
+        $total_skipped = array_sum(array_filter($results['skipped'], 'is_numeric'));
+      }
+      if (!empty($results['errors']) && is_array($results['errors'])) {
+        $total_errors = array_sum(array_filter($results['errors'], 'is_numeric'));
+      }
 
       $messenger->addStatus(t(
         'Імпорт завершено. Імпортовано: @import, Оновлено: @update, Пропущено: @skip, Помилок: @errors',
