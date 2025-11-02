@@ -272,27 +272,16 @@ class ImportTermsForm extends FormBase {
    *   Створений термін.
    */
   protected static function createTerm($vocabulary_id, array $term_data, array $tid_map) {
-    // Перевіряємо чи термін вже існує за назвою.
-    $existing_terms = \Drupal::entityTypeManager()
-      ->getStorage('taxonomy_term')
-      ->loadByProperties([
-        'vid' => $vocabulary_id,
-        'name' => $term_data['name'],
-        'langcode' => $term_data['language'] ?? 'uk',
-      ]);
-
-    if (!empty($existing_terms)) {
-      $term = reset($existing_terms);
-      \Drupal::logger('migrate_from_drupal7')->info(
-        'Термін @name вже існує (tid: @new_tid, старий tid: @old_tid)',
-        [
-          '@name' => $term_data['name'],
-          '@new_tid' => $term->id(),
-          '@old_tid' => $term_data['tid'],
-        ]
-      );
-      return $term;
-    }
+    // ЗАВЖДИ створюємо новий термін, навіть якщо термін з такою назвою вже існує.
+    // Це важливо тому що в словнику можуть бути терміни з однаковими назвами
+    // але різними parent (наприклад "Сукні" під "Жіноча мода" і "Дитяча мода").
+    \Drupal::logger('migrate_from_drupal7')->info(
+      'Створення терміну @name (старий tid: @old_tid)',
+      [
+        '@name' => $term_data['name'],
+        '@old_tid' => $term_data['tid'],
+      ]
+    );
 
     // Створюємо новий термін.
     $term = Term::create([
