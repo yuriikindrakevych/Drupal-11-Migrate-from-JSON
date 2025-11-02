@@ -42,8 +42,11 @@ function migrate_from_drupal7_cron() {
   $interval = $config->get('interval') ?? 'daily';
   $last_run = $config->get('last_run');
   $vocabularies = $config->get('vocabularies') ?? [];
+  $node_types = $config->get('node_types') ?? [];
+  $skip_unchanged = $config->get('skip_unchanged') ?? TRUE;
 
-  if (empty($vocabularies)) {
+  // Якщо нічого не вибрано - виходимо.
+  if (empty($vocabularies) && empty($node_types)) {
     return;
   }
 
@@ -87,15 +90,19 @@ function migrate_from_drupal7_cron() {
   \Drupal::logger('migrate_from_drupal7')->info('Cron: початок автоматичного імпорту');
   $log_service->log(
     'cron',
-    'term',
+    'import',
     'success',
     'Початок автоматичного імпорту через cron',
     NULL,
-    ['vocabularies' => $vocabularies, 'interval' => $interval],
+    [
+      'vocabularies' => $vocabularies,
+      'node_types' => $node_types,
+      'interval' => $interval,
+    ],
     0
   );
 
-  // Запускаємо batch імпорт для кожного словника.
+  // Запускаємо batch імпорт.
   $batch = [
     'title' => t('Автоматичний імпорт через cron'),
     'operations' => [],
@@ -103,11 +110,22 @@ function migrate_from_drupal7_cron() {
     'progressive' => FALSE,  // Запускаємо в фоні без UI
   ];
 
+  // Додаємо імпорт словників.
   foreach ($vocabularies as $vocabulary_id) {
     if (!empty($vocabulary_id)) {
       $batch['operations'][] = [
         '\Drupal\migrate_from_drupal7\Form\ImportTermsForm::batchImportTerms',
         [$vocabulary_id],
+      ];
+    }
+  }
+
+  // Додаємо імпорт матеріалів.
+  foreach ($node_types as $node_type) {
+    if (!empty($node_type)) {
+      $batch['operations'][] = [
+        '\Drupal\migrate_from_drupal7\Form\ImportNodesForm::batchImportNodes',
+        [$node_type, 50, $skip_unchanged],  // batch_size=50, skip_unchanged
       ];
     }
   }
@@ -125,7 +143,10 @@ function migrate_from_drupal7_cron() {
   $batch['progressive'] = FALSE;
 
   \Drupal::logger('migrate_from_drupal7')->info(
-    'Cron: запущено імпорт для @count словників',
-    ['@count' => count($vocabularies)]
+    'Cron: запущено імпорт (@vocabularies словників, @nodes типів матеріалів)',
+    [
+      '@vocabularies' => count($vocabularies),
+      '@nodes' => count($node_types),
+    ]
   );
 }

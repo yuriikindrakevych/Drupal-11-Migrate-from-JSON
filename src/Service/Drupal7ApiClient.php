@@ -179,4 +179,101 @@ class Drupal7ApiClient {
     }
   }
 
+  /**
+   * Отримати список матеріалів (nodes) з Drupal 7.
+   *
+   * @param string $type
+   *   Тип матеріалу (content type).
+   * @param int $limit
+   *   Кількість матеріалів для отримання (за замовчуванням 10).
+   * @param int $offset
+   *   Зсув для пагінації (за замовчуванням 0).
+   *
+   * @return array|null
+   *   Масив з nodes або NULL у разі помилки.
+   *   Формат: ['nodes' => [...], 'total' => int]
+   */
+  public function getNodes($type, $limit = 10, $offset = 0) {
+    $base_url = $this->config->get('base_url');
+
+    if (empty($base_url)) {
+      $this->logger->error('Базова URL не налаштована');
+      return NULL;
+    }
+
+    // Формуємо URL: /json-api/nodes?limit=10&type=news&offset=10
+    $params = [
+      'type' => $type,
+      'limit' => $limit,
+      'offset' => $offset,
+    ];
+
+    $url = rtrim($base_url, '/') . '/json-api/nodes?' . http_build_query($params);
+
+    try {
+      $response = $this->httpClient->get($url);
+      $data = json_decode($response->getBody()->getContents(), TRUE);
+
+      if (json_last_error() !== JSON_ERROR_NONE) {
+        $this->logger->error('Помилка декодування JSON з @url: @error', [
+          '@url' => $url,
+          '@error' => json_last_error_msg(),
+        ]);
+        return NULL;
+      }
+
+      return $data;
+    }
+    catch (GuzzleException $e) {
+      $this->logger->error('Помилка запиту до @url: @message', [
+        '@url' => $url,
+        '@message' => $e->getMessage(),
+      ]);
+      return NULL;
+    }
+  }
+
+  /**
+   * Отримати дані окремого матеріалу (node) за NID.
+   *
+   * @param int|string $nid
+   *   NID матеріалу в Drupal 7.
+   *
+   * @return array|null
+   *   Дані матеріалу або NULL у разі помилки.
+   */
+  public function getNodeById($nid) {
+    $base_url = $this->config->get('base_url');
+
+    if (empty($base_url)) {
+      $this->logger->error('Базова URL не налаштована');
+      return NULL;
+    }
+
+    // Формуємо URL: /json-api/node/{NID}
+    $url = rtrim($base_url, '/') . '/json-api/node/' . $nid;
+
+    try {
+      $response = $this->httpClient->get($url);
+      $data = json_decode($response->getBody()->getContents(), TRUE);
+
+      if (json_last_error() !== JSON_ERROR_NONE) {
+        $this->logger->error('Помилка декодування JSON з @url: @error', [
+          '@url' => $url,
+          '@error' => json_last_error_msg(),
+        ]);
+        return NULL;
+      }
+
+      return $data;
+    }
+    catch (GuzzleException $e) {
+      $this->logger->error('Помилка запиту до @url: @message', [
+        '@url' => $url,
+        '@message' => $e->getMessage(),
+      ]);
+      return NULL;
+    }
+  }
+
 }
