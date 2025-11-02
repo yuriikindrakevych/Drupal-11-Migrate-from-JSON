@@ -2,3 +2,11 @@ services:
   migrate_from_drupal7.api_client:
     class: Drupal\migrate_from_drupal7\Service\Drupal7ApiClient
     arguments: ['@http_client', '@config.factory', '@logger.factory']
+
+  migrate_from_drupal7.mapping:
+    class: Drupal\migrate_from_drupal7\Service\MappingService
+    arguments: ['@database']
+
+  migrate_from_drupal7.log:
+    class: Drupal\migrate_from_drupal7\Service\LogService
+    arguments: ['@database', '@current_user']

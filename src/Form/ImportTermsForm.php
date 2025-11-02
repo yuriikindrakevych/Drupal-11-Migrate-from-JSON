@@ -5,6 +5,8 @@ namespace Drupal\migrate_from_drupal7\Form;
 use Drupal\Core\Form\FormBase;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\migrate_from_drupal7\Service\Drupal7ApiClient;
+use Drupal\migrate_from_drupal7\Service\MappingService;
+use Drupal\migrate_from_drupal7\Service\LogService;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\taxonomy\Entity\Term;
@@ -39,11 +41,32 @@ class ImportTermsForm extends FormBase {
   protected $entityTypeManager;
 
   /**
+   * Mapping service.
+   *
+   * @var \Drupal\migrate_from_drupal7\Service\MappingService
+   */
+  protected $mappingService;
+
+  /**
+   * Log service.
+   *
+   * @var \Drupal\migrate_from_drupal7\Service\LogService
+   */
+  protected $logService;
+
+  /**
    * Конструктор.
    */
-  public function __construct(Drupal7ApiClient $api_client, EntityTypeManagerInterface $entity_type_manager) {
+  public function __construct(
+    Drupal7ApiClient $api_client,
+    EntityTypeManagerInterface $entity_type_manager,
+    MappingService $mapping_service,
+    LogService $log_service
+  ) {
     $this->apiClient = $api_client;
     $this->entityTypeManager = $entity_type_manager;
+    $this->mappingService = $mapping_service;
+    $this->logService = $log_service;
   }
 
   /**
@@ -52,7 +75,9 @@ class ImportTermsForm extends FormBase {
   public static function create(ContainerInterface $container) {
     return new static(
       $container->get('migrate_from_drupal7.api_client'),
-      $container->get('entity_type.manager')
+      $container->get('entity_type.manager'),
+      $container->get('migrate_from_drupal7.mapping'),
+      $container->get('migrate_from_drupal7.log')
     );
   }
 
@@ -207,6 +232,8 @@ class ImportTermsForm extends FormBase {
   public static function batchImportTerms($vocabulary_id, array &$context) {
     $api_client = \Drupal::service('migrate_from_drupal7.api_client');
     $entity_type_manager = \Drupal::entityTypeManager();
+    $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
+    $log_service = \Drupal::service('migrate_from_drupal7.log');
 
     // Ініціалізація при першому запуску.
     if (!isset($context['sandbox']['progress'])) {
@@ -219,17 +246,36 @@ class ImportTermsForm extends FormBase {
         return;
       }
 
+      // Завантажуємо існуючі маппінги з БД.
+      $existing_mappings = $mapping_service->getAllMappings('term', $vocabulary_id);
+
       // Зберігаємо в sandbox.
       $context['sandbox']['terms'] = $data['terms'];
       $context['sandbox']['total'] = count($data['terms']);
       $context['sandbox']['progress'] = 0;
-      $context['sandbox']['tid_map'] = [];  // Мапінг: old_tid => new_tid
+      $context['sandbox']['tid_map'] = $existing_mappings;  // Мапінг: old_tid => new_tid з БД
       $context['sandbox']['imported'] = 0;
+      $context['sandbox']['updated'] = 0;
       $context['sandbox']['errors'] = 0;
 
       \Drupal::logger('migrate_from_drupal7')->info(
-        'Початок імпорту @count термінів для словника @vocab',
-        ['@count' => $context['sandbox']['total'], '@vocab' => $vocabulary_id]
+        'Початок імпорту @count термінів для словника @vocab (існуючих маппінгів: @mappings)',
+        [
+          '@count' => $context['sandbox']['total'],
+          '@vocab' => $vocabulary_id,
+          '@mappings' => count($existing_mappings),
+        ]
+      );
+
+      // Логуємо початок імпорту.
+      $log_service->log(
+        'import',
+        'term',
+        'success',
+        "Початок імпорту термінів для словника $vocabulary_id",
+        $vocabulary_id,
+        ['total' => $context['sandbox']['total'], 'existing_mappings' => count($existing_mappings)],
+        0  // cron user
       );
     }
 
@@ -242,29 +288,68 @@ class ImportTermsForm extends FormBase {
 
     foreach ($terms_to_process as $term_data) {
       try {
-        // ГОЛОВНА ЛОГІКА: створюємо термін з parent + переклади.
-        $new_term = self::createTermWithTranslations(
+        // ГОЛОВНА ЛОГІКА: створюємо/оновлюємо термін з parent + переклади.
+        $result = self::createTermWithTranslations(
           $vocabulary_id,
           $term_data,
           $context['sandbox']['tid_map']
         );
 
-        // Зберігаємо мапінг old_tid => new_tid.
-        $context['sandbox']['tid_map'][$term_data['tid']] = $new_term->id();
-        $context['sandbox']['imported']++;
+        $term = $result['term'];
+        $is_update = $result['is_update'];
+
+        // Зберігаємо мапінг в БД та в sandbox.
+        $mapping_service->saveMapping('term', $term_data['tid'], $term->id(), $vocabulary_id);
+        $context['sandbox']['tid_map'][$term_data['tid']] = $term->id();
+
+        // Лічильники.
+        if ($is_update) {
+          $context['sandbox']['updated']++;
+        }
+        else {
+          $context['sandbox']['imported']++;
+        }
+
+        // Логуємо операцію.
+        $log_service->logSuccess(
+          $is_update ? 'update' : 'import',
+          'term',
+          $is_update ? "Оновлено термін: {$term_data['name']}" : "Імпортовано термін: {$term_data['name']}",
+          (string) $term->id(),
+          [
+            'old_tid' => $term_data['tid'],
+            'new_tid' => $term->id(),
+            'vocabulary_id' => $vocabulary_id,
+            'parent' => $term_data['parent'] ?? '0',
+          ]
+        );
 
         \Drupal::logger('migrate_from_drupal7')->info(
-          'Імпортовано: @name (old_tid=@old, new_tid=@new, parent=@parent)',
+          '@action: @name (old_tid=@old, new_tid=@new, parent=@parent)',
           [
+            '@action' => $is_update ? 'Оновлено' : 'Імпортовано',
             '@name' => $term_data['name'],
             '@old' => $term_data['tid'],
-            '@new' => $new_term->id(),
+            '@new' => $term->id(),
             '@parent' => $term_data['parent'] ?? '0',
           ]
         );
       }
       catch (\Exception $e) {
         $context['sandbox']['errors']++;
+
+        // Логуємо помилку.
+        $log_service->logError(
+          'import',
+          'term',
+          "Помилка імпорту терміну: {$term_data['name']}",
+          $term_data['tid'] ?? NULL,
+          [
+            'error' => $e->getMessage(),
+            'vocabulary_id' => $vocabulary_id,
+          ]
+        );
+
         \Drupal::logger('migrate_from_drupal7')->error(
           'Помилка імпорту терміну @name: @message',
           ['@name' => $term_data['name'], '@message' => $e->getMessage()]
@@ -280,11 +365,12 @@ class ImportTermsForm extends FormBase {
       : 1;
 
     $context['message'] = t(
-      'Імпортовано термінів: @current з @total (успішно: @imported, помилок: @errors)',
+      'Термінів: @current з @total (імпортовано: @imported, оновлено: @updated, помилок: @errors)',
       [
         '@current' => $context['sandbox']['progress'],
         '@total' => $context['sandbox']['total'],
         '@imported' => $context['sandbox']['imported'],
+        '@updated' => $context['sandbox']['updated'],
         '@errors' => $context['sandbox']['errors'],
       ]
     );
@@ -292,20 +378,42 @@ class ImportTermsForm extends FormBase {
     // Зберігаємо результати для фінального повідомлення.
     if ($context['finished'] >= 1) {
       $context['results']['imported'][$vocabulary_id] = $context['sandbox']['imported'];
+      $context['results']['updated'][$vocabulary_id] = $context['sandbox']['updated'];
       $context['results']['errors'][$vocabulary_id] = $context['sandbox']['errors'];
     }
   }
 
   /**
-   * Створити термін з parent і перекладами.
+   * Створити або оновити термін з parent і перекладами.
    *
-   * ПРОСТА ЛОГІКА:
-   * 1. Визначаємо parent через мапінг
-   * 2. Створюємо термін
-   * 3. Додаємо переклади
+   * ЛОГІКА З МАППІНГОМ:
+   * 1. Перевіряємо чи існує маппінг (old_tid -> new_tid)
+   * 2. Якщо існує - завантажуємо та оновлюємо термін
+   * 3. Якщо немає - створюємо новий термін
+   * 4. Визначаємо parent через мапінг
+   * 5. Додаємо переклади
    */
   protected static function createTermWithTranslations($vocabulary_id, array $term_data, array $tid_map) {
-    // 1. Визначаємо parent.
+    $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
+    $old_tid = $term_data['tid'];
+
+    // 1. Перевіряємо чи існує маппінг.
+    $existing_new_tid = $mapping_service->getNewId('term', $old_tid, $vocabulary_id);
+    $is_update = FALSE;
+
+    if ($existing_new_tid) {
+      // Завантажуємо існуючий термін.
+      $term = Term::load($existing_new_tid);
+      if ($term) {
+        $is_update = TRUE;
+      }
+      else {
+        // Маппінг є, але термін видалено - створюємо новий.
+        $term = NULL;
+      }
+    }
+
+    // 2. Визначаємо parent через мапінг.
     $parent_id = NULL;
     if (isset($term_data['parent'])) {
       // Parent може бути рядком "1" або масивом ["1"].
@@ -329,18 +437,32 @@ class ImportTermsForm extends FormBase {
       }
     }
 
-    // 2. Створюємо термін.
-    $term = Term::create([
-      'vid' => $vocabulary_id,
-      'name' => $term_data['name'],
-      'description' => [
+    // 3. Створюємо або оновлюємо термін.
+    if ($is_update && $term) {
+      // Оновлюємо існуючий термін.
+      $term->set('name', $term_data['name']);
+      $term->set('description', [
         'value' => $term_data['description'] ?? '',
         'format' => 'basic_html',
-      ],
-      'weight' => $term_data['weight'] ?? 0,
-      'langcode' => $term_data['language'] ?? 'uk',
-      'parent' => $parent_id ? [$parent_id] : [0],
-    ]);
+      ]);
+      $term->set('weight', $term_data['weight'] ?? 0);
+      $term->set('langcode', $term_data['language'] ?? 'uk');
+      $term->set('parent', $parent_id ? [$parent_id] : [0]);
+    }
+    else {
+      // Створюємо новий термін.
+      $term = Term::create([
+        'vid' => $vocabulary_id,
+        'name' => $term_data['name'],
+        'description' => [
+          'value' => $term_data['description'] ?? '',
+          'format' => 'basic_html',
+        ],
+        'weight' => $term_data['weight'] ?? 0,
+        'langcode' => $term_data['language'] ?? 'uk',
+        'parent' => $parent_id ? [$parent_id] : [0],
+      ]);
+    }
 
     // Імпортуємо поля.
     if (!empty($term_data['fields'])) {
@@ -349,14 +471,14 @@ class ImportTermsForm extends FormBase {
 
     $term->save();
 
-    // 3. Додаємо переклади.
+    // 4. Додаємо переклади.
     if (!empty($term_data['translations'])) {
       foreach ($term_data['translations'] as $langcode => $translation_data) {
         self::addTranslation($term, $langcode, $translation_data);
       }
     }
 
-    return $term;
+    return ['term' => $term, 'is_update' => $is_update];
   }
 
   /**
