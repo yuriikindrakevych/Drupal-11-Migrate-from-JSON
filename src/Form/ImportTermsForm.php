@@ -183,71 +183,180 @@ class ImportTermsForm extends FormBase {
         return;
       }
 
-      // Ініціалізуємо sandbox для зберігання мапінгу старих tid на нові.
-      if (!isset($context['sandbox']['tid_map'])) {
+      // Ініціалізуємо sandbox.
+      if (!isset($context['sandbox']['phase'])) {
+        $context['sandbox']['phase'] = 'create_terms';  // Фаза 1: Створення термінів
         $context['sandbox']['tid_map'] = [];
         $context['sandbox']['terms'] = $data['terms'];
         $context['sandbox']['total'] = count($data['terms']);
         $context['sandbox']['current'] = 0;
         $context['sandbox']['vocabulary_name'] = $vocabulary->label();
+        \Drupal::logger('migrate_from_drupal7')->info(
+          'Початок імпорту @count термінів для словника @vocab',
+          ['@count' => $context['sandbox']['total'], '@vocab' => $vocabulary->label()]
+        );
       }
 
-      // Обробляємо терміни партіями по 10 штук за раз.
-      $terms_to_process = array_slice(
-        $context['sandbox']['terms'],
-        $context['sandbox']['current'],
-        10
-      );
+      // ФАЗА 1: Створення термінів (без parent і без перекладів).
+      if ($context['sandbox']['phase'] === 'create_terms') {
+        $terms_to_process = array_slice(
+          $context['sandbox']['terms'],
+          $context['sandbox']['current'],
+          10
+        );
 
-      foreach ($terms_to_process as $term_data) {
-        try {
-          // Створюємо або оновлюємо термін.
-          $term = self::createTerm($vocabulary_id, $term_data, $context['sandbox']['tid_map']);
+        foreach ($terms_to_process as $term_data) {
+          try {
+            // Створюємо термін БЕЗ parent.
+            $term = self::createTermWithoutParent($vocabulary_id, $term_data);
 
-          // Зберігаємо мапінг старого tid на новий.
-          $context['sandbox']['tid_map'][$term_data['tid']] = $term->id();
+            // Зберігаємо мапінг старого tid на новий.
+            $context['sandbox']['tid_map'][$term_data['tid']] = $term->id();
 
-          // Додаємо переклади.
-          if (!empty($term_data['translations'])) {
-            foreach ($term_data['translations'] as $langcode => $translation_data) {
-              self::createTermTranslation($term, $langcode, $translation_data);
+            if (!isset($context['results']['imported'][$vocabulary_id])) {
+              $context['results']['imported'][$vocabulary_id] = 0;
+            }
+            $context['results']['imported'][$vocabulary_id]++;
+          }
+          catch (\Exception $e) {
+            \Drupal::logger('migrate_from_drupal7')->error(
+              'Помилка створення терміну @name: @message',
+              ['@name' => $term_data['name'], '@message' => $e->getMessage()]
+            );
+            $context['results']['errors'][] = $term_data['name'] . ': ' . $e->getMessage();
+          }
+
+          $context['sandbox']['current']++;
+        }
+
+        // Перевіряємо чи завершили створення всіх термінів.
+        if ($context['sandbox']['current'] >= $context['sandbox']['total']) {
+          \Drupal::logger('migrate_from_drupal7')->info(
+            'Завершено створення @count термінів. Переходимо до встановлення ієрархії.',
+            ['@count' => $context['sandbox']['current']]
+          );
+          $context['sandbox']['phase'] = 'setup_hierarchy';
+          $context['sandbox']['current'] = 0;
+        }
+
+        $context['message'] = t(
+          'Створення термінів: @current з @total (@vocabulary)',
+          [
+            '@current' => $context['sandbox']['current'],
+            '@total' => $context['sandbox']['total'],
+            '@vocabulary' => $context['sandbox']['vocabulary_name'],
+          ]
+        );
+      }
+
+      // ФАЗА 2: Встановлення ієрархії (parent).
+      if ($context['sandbox']['phase'] === 'setup_hierarchy') {
+        $terms_to_process = array_slice(
+          $context['sandbox']['terms'],
+          $context['sandbox']['current'],
+          20  // Обробляємо більше, бо це швидша операція
+        );
+
+        foreach ($terms_to_process as $term_data) {
+          try {
+            self::setTermParent($term_data, $context['sandbox']['tid_map']);
+          }
+          catch (\Exception $e) {
+            \Drupal::logger('migrate_from_drupal7')->error(
+              'Помилка встановлення parent для терміну @name: @message',
+              ['@name' => $term_data['name'], '@message' => $e->getMessage()]
+            );
+          }
+
+          $context['sandbox']['current']++;
+        }
+
+        // Перевіряємо чи завершили встановлення ієрархії для всіх термінів.
+        if ($context['sandbox']['current'] >= $context['sandbox']['total']) {
+          \Drupal::logger('migrate_from_drupal7')->info(
+            'Завершено встановлення ієрархії. Переходимо до створення перекладів.'
+          );
+          $context['sandbox']['phase'] = 'create_translations';
+          $context['sandbox']['current'] = 0;
+        }
+
+        $context['message'] = t(
+          'Встановлення ієрархії: @current з @total (@vocabulary)',
+          [
+            '@current' => $context['sandbox']['current'],
+            '@total' => $context['sandbox']['total'],
+            '@vocabulary' => $context['sandbox']['vocabulary_name'],
+          ]
+        );
+      }
+
+      // ФАЗА 3: Створення перекладів.
+      if ($context['sandbox']['phase'] === 'create_translations') {
+        $terms_to_process = array_slice(
+          $context['sandbox']['terms'],
+          $context['sandbox']['current'],
+          10
+        );
+
+        foreach ($terms_to_process as $term_data) {
+          try {
+            // Створюємо переклади для терміну.
+            if (!empty($term_data['translations']) && isset($context['sandbox']['tid_map'][$term_data['tid']])) {
+              $term_id = $context['sandbox']['tid_map'][$term_data['tid']];
+              $term = $entity_type_manager->getStorage('taxonomy_term')->load($term_id);
+
+              if ($term) {
+                foreach ($term_data['translations'] as $langcode => $translation_data) {
+                  self::createTermTranslation($term, $langcode, $translation_data);
+                }
+              }
             }
           }
-
-          if (!isset($context['results']['imported'][$vocabulary_id])) {
-            $context['results']['imported'][$vocabulary_id] = 0;
+          catch (\Exception $e) {
+            \Drupal::logger('migrate_from_drupal7')->error(
+              'Помилка створення перекладів для терміну @name: @message',
+              ['@name' => $term_data['name'], '@message' => $e->getMessage()]
+            );
           }
-          $context['results']['imported'][$vocabulary_id]++;
+
+          $context['sandbox']['current']++;
         }
-        catch (\Exception $e) {
-          \Drupal::logger('migrate_from_drupal7')->error(
-            'Помилка імпорту терміну @name: @message',
-            ['@name' => $term_data['name'], '@message' => $e->getMessage()]
+
+        // Перевіряємо чи завершили створення перекладів для всіх термінів.
+        if ($context['sandbox']['current'] >= $context['sandbox']['total']) {
+          \Drupal::logger('migrate_from_drupal7')->info(
+            'Завершено імпорт словника @vocab',
+            ['@vocab' => $context['sandbox']['vocabulary_name']]
           );
-          $context['results']['errors'][] = $term_data['name'] . ': ' . $e->getMessage();
+          $context['finished'] = 1;
+        }
+        else {
+          $context['finished'] = $context['sandbox']['current'] / $context['sandbox']['total'];
         }
 
-        $context['sandbox']['current']++;
+        $context['message'] = t(
+          'Створення перекладів: @current з @total (@vocabulary)',
+          [
+            '@current' => $context['sandbox']['current'],
+            '@total' => $context['sandbox']['total'],
+            '@vocabulary' => $context['sandbox']['vocabulary_name'],
+          ]
+        );
       }
 
-      // Після імпорту всіх термінів налаштовуємо ієрархію.
-      if ($context['sandbox']['current'] >= $context['sandbox']['total']) {
-        // Використовуємо терміни з sandbox, а не з $data.
-        self::setupHierarchy($context['sandbox']['terms'], $context['sandbox']['tid_map'], $vocabulary_id);
-        $context['finished'] = 1;
+      // Розрахунок загального прогресу.
+      if (!isset($context['finished']) || $context['finished'] < 1) {
+        // 3 фази: створення термінів (40%), ієрархія (30%), переклади (30%)
+        if ($context['sandbox']['phase'] === 'create_terms') {
+          $context['finished'] = ($context['sandbox']['current'] / $context['sandbox']['total']) * 0.4;
+        }
+        elseif ($context['sandbox']['phase'] === 'setup_hierarchy') {
+          $context['finished'] = 0.4 + ($context['sandbox']['current'] / $context['sandbox']['total']) * 0.3;
+        }
+        elseif ($context['sandbox']['phase'] === 'create_translations') {
+          $context['finished'] = 0.7 + ($context['sandbox']['current'] / $context['sandbox']['total']) * 0.3;
+        }
       }
-      else {
-        $context['finished'] = $context['sandbox']['current'] / $context['sandbox']['total'];
-      }
-
-      $context['message'] = t(
-        'Імпортовано термінів: @current з @total (@vocabulary)',
-        [
-          '@current' => $context['sandbox']['current'],
-          '@total' => $context['sandbox']['total'],
-          '@vocabulary' => $context['sandbox']['vocabulary_name'],
-        ]
-      );
     }
     catch (\Exception $e) {
       \Drupal::logger('migrate_from_drupal7')->error(
@@ -255,35 +364,31 @@ class ImportTermsForm extends FormBase {
         ['@vocab' => $vocabulary_id, '@message' => $e->getMessage()]
       );
       $context['results']['errors'][] = 'Словник ' . $vocabulary_id . ': ' . $e->getMessage();
+      $context['finished'] = 1;
     }
   }
 
   /**
-   * Створити термін таксономії.
+   * Створити термін БЕЗ встановлення parent.
    *
    * @param string $vocabulary_id
    *   ID словника.
    * @param array $term_data
    *   Дані терміну з Drupal 7.
-   * @param array $tid_map
-   *   Мапінг старих tid на нові.
    *
    * @return \Drupal\taxonomy\Entity\Term
    *   Створений термін.
    */
-  protected static function createTerm($vocabulary_id, array $term_data, array $tid_map) {
-    // ЗАВЖДИ створюємо новий термін, навіть якщо термін з такою назвою вже існує.
-    // Це важливо тому що в словнику можуть бути терміни з однаковими назвами
-    // але різними parent (наприклад "Сукні" під "Жіноча мода" і "Дитяча мода").
+  protected static function createTermWithoutParent($vocabulary_id, array $term_data) {
     \Drupal::logger('migrate_from_drupal7')->info(
-      'Створення терміну @name (старий tid: @old_tid)',
+      'Створення терміну @name (tid: @tid)',
       [
         '@name' => $term_data['name'],
-        '@old_tid' => $term_data['tid'],
+        '@tid' => $term_data['tid'],
       ]
     );
 
-    // Створюємо новий термін.
+    // Створюємо термін БЕЗ parent.
     $term = Term::create([
       'vid' => $vocabulary_id,
       'name' => $term_data['name'],
@@ -320,6 +425,86 @@ class ImportTermsForm extends FormBase {
     );
 
     return $term;
+  }
+
+  /**
+   * Встановити parent для терміну.
+   *
+   * @param array $term_data
+   *   Дані терміну з Drupal 7.
+   * @param array $tid_map
+   *   Мапінг старих tid на нові.
+   */
+  protected static function setTermParent(array $term_data, array $tid_map) {
+    // Перевіряємо чи є parent у терміну.
+    if (!isset($term_data['parent'])) {
+      return;
+    }
+
+    // В новій структурі parent - це рядок, а не масив.
+    $parent_tid_old = $term_data['parent'];
+
+    // Пропускаємо кореневі терміни (parent = "0").
+    if ($parent_tid_old === '0' || $parent_tid_old === 0 || $parent_tid_old === null) {
+      \Drupal::logger('migrate_from_drupal7')->debug(
+        'Термін @term (@tid) є кореневим (parent = @parent)',
+        [
+          '@term' => $term_data['name'],
+          '@tid' => $term_data['tid'],
+          '@parent' => $parent_tid_old,
+        ]
+      );
+      return;
+    }
+
+    // Знаходимо новий tid терміну.
+    if (!isset($tid_map[$term_data['tid']])) {
+      \Drupal::logger('migrate_from_drupal7')->warning(
+        'Не знайдено мапінг для терміну @term (старий tid: @tid)',
+        ['@term' => $term_data['name'], '@tid' => $term_data['tid']]
+      );
+      return;
+    }
+
+    $new_tid = $tid_map[$term_data['tid']];
+
+    // Знаходимо новий tid батьківського терміну.
+    if (!isset($tid_map[$parent_tid_old])) {
+      \Drupal::logger('migrate_from_drupal7')->warning(
+        'Не знайдено батьківський термін для @term (старий parent tid: @parent, старий tid: @tid)',
+        [
+          '@term' => $term_data['name'],
+          '@parent' => $parent_tid_old,
+          '@tid' => $term_data['tid'],
+        ]
+      );
+      return;
+    }
+
+    $new_parent_tid = $tid_map[$parent_tid_old];
+
+    // Завантажуємо термін і встановлюємо батьківський.
+    $term = \Drupal::entityTypeManager()->getStorage('taxonomy_term')->load($new_tid);
+    if ($term) {
+      $term->set('parent', $new_parent_tid);
+      $term->save();
+
+      \Drupal::logger('migrate_from_drupal7')->info(
+        'Встановлено parent: @term (новий tid: @new_tid) -> parent (новий tid: @new_parent, старий tid: @old_parent)',
+        [
+          '@term' => $term_data['name'],
+          '@new_tid' => $new_tid,
+          '@new_parent' => $new_parent_tid,
+          '@old_parent' => $parent_tid_old,
+        ]
+      );
+    }
+    else {
+      \Drupal::logger('migrate_from_drupal7')->error(
+        'Не вдалося завантажити термін @term (новий tid: @tid)',
+        ['@term' => $term_data['name'], '@tid' => $new_tid]
+      );
+    }
   }
 
   /**
@@ -461,107 +646,6 @@ class ImportTermsForm extends FormBase {
     \Drupal::logger('migrate_from_drupal7')->info(
       'Створено переклад терміну @name на мову @lang',
       ['@name' => $term->getName(), '@lang' => $langcode]
-    );
-  }
-
-  /**
-   * Налаштувати ієрархію термінів після імпорту.
-   *
-   * @param array $terms
-   *   Масив термінів з Drupal 7.
-   * @param array $tid_map
-   *   Мапінг старих tid на нові.
-   * @param string $vocabulary_id
-   *   ID словника.
-   */
-  protected static function setupHierarchy(array $terms, array $tid_map, $vocabulary_id) {
-    $entity_type_manager = \Drupal::entityTypeManager();
-
-    \Drupal::logger('migrate_from_drupal7')->info(
-      'Початок налаштування ієрархії для @count термінів. Мапінг містить @map_count записів.',
-      ['@count' => count($terms), '@map_count' => count($tid_map)]
-    );
-
-    foreach ($terms as $term_data) {
-      // Пропускаємо терміни без батьківського елемента.
-      if (!isset($term_data['parent']) || $term_data['parent'] === null) {
-        \Drupal::logger('migrate_from_drupal7')->debug(
-          'Термін @term (@tid) не має поля parent',
-          ['@term' => $term_data['name'], '@tid' => $term_data['tid']]
-        );
-        continue;
-      }
-
-      // Знаходимо новий tid терміну.
-      if (!isset($tid_map[$term_data['tid']])) {
-        \Drupal::logger('migrate_from_drupal7')->warning(
-          'Не знайдено мапінг для терміну @term (старий tid: @tid)',
-          ['@term' => $term_data['name'], '@tid' => $term_data['tid']]
-        );
-        continue;
-      }
-
-      $new_tid = $tid_map[$term_data['tid']];
-
-      // Знаходимо новий tid батьківського терміну.
-      // В JSON parent - це масив, наприклад ["1"] або [0].
-      $parent_tid_old = is_array($term_data['parent']) ? $term_data['parent'][0] : $term_data['parent'];
-
-      // Пропускаємо кореневі терміни (parent = 0).
-      if ($parent_tid_old == 0 || $parent_tid_old === '0') {
-        \Drupal::logger('migrate_from_drupal7')->info(
-          'Термін @term (@tid) є кореневим (parent = @parent)',
-          [
-            '@term' => $term_data['name'],
-            '@tid' => $term_data['tid'],
-            '@parent' => $parent_tid_old,
-          ]
-        );
-        continue;
-      }
-
-      if (!isset($tid_map[$parent_tid_old])) {
-        \Drupal::logger('migrate_from_drupal7')->warning(
-          'Не знайдено батьківський термін для @term (старий parent tid: @parent, старий tid: @tid)',
-          [
-            '@term' => $term_data['name'],
-            '@parent' => $parent_tid_old,
-            '@tid' => $term_data['tid'],
-          ]
-        );
-        continue;
-      }
-
-      $new_parent_tid = $tid_map[$parent_tid_old];
-
-      // Завантажуємо термін і встановлюємо батьківський.
-      $term = $entity_type_manager->getStorage('taxonomy_term')->load($new_tid);
-      if ($term) {
-        $term->set('parent', $new_parent_tid);
-        $term->save();
-
-        \Drupal::logger('migrate_from_drupal7')->info(
-          'Встановлено ієрархію: @term (новий tid: @new_tid, старий tid: @old_tid) -> parent (новий tid: @new_parent, старий tid: @old_parent)',
-          [
-            '@term' => $term_data['name'],
-            '@new_tid' => $new_tid,
-            '@old_tid' => $term_data['tid'],
-            '@new_parent' => $new_parent_tid,
-            '@old_parent' => $parent_tid_old,
-          ]
-        );
-      }
-      else {
-        \Drupal::logger('migrate_from_drupal7')->error(
-          'Не вдалося завантажити термін @term (новий tid: @tid)',
-          ['@term' => $term_data['name'], '@tid' => $new_tid]
-        );
-      }
-    }
-
-    \Drupal::logger('migrate_from_drupal7')->info(
-      'Завершено налаштування ієрархії для словника @vocab',
-      ['@vocab' => $vocabulary_id]
     );
   }
 
