@@ -12,6 +12,7 @@ use Drupal\field\Entity\FieldConfig;
 use Drupal\Core\Entity\Entity\EntityFormDisplay;
 use Drupal\Core\Entity\Entity\EntityViewDisplay;
 use Drupal\node\Entity\NodeType;
+use Drupal\language\Entity\ContentLanguageSettings;
 
 /**
  * Форма для імпорту типів матеріалів з Drupal 7.
@@ -277,7 +278,6 @@ class ImportContentTypesForm extends FormBase {
    *   Дані типу контенту з Drupal 7.
    */
   protected static function configureContentTranslation($type_id, array $content_type_data) {
-    // Перевіряємо чи в Drupal 7 була ввімкнена багатомовність.
     $multilingual_enabled = $content_type_data['multilingual_enabled'] ?? false;
     $translation_mode = $content_type_data['translation_mode'] ?? '';
 
@@ -287,26 +287,22 @@ class ImportContentTypesForm extends FormBase {
 
     $module_handler = \Drupal::service('module_handler');
     if (!$module_handler->moduleExists('content_translation')) {
-      \Drupal::logger('migrate_from_drupal7')->warning(
-        'Модуль content_translation не ввімкнено. Багатомовність для типу @type не буде налаштована.',
-        ['@type' => $type_id]
-      );
       return;
     }
 
     try {
-      $config = \Drupal::service('language.content_settings_manager')
-        ->loadContentLanguageSettings('node', $type_id);
+      $config = ContentLanguageSettings::loadByEntityTypeBundle('node', $type_id);
+      if (!$config) {
+        $config = ContentLanguageSettings::create([
+          'target_entity_type_id' => 'node',
+          'target_bundle' => $type_id,
+        ]);
+      }
 
       $config->setDefaultLangcode('uk');
       $config->setLanguageAlterable(TRUE);
       $config->setThirdPartySetting('content_translation', 'enabled', TRUE);
       $config->save();
-
-      \Drupal::logger('migrate_from_drupal7')->info(
-        'Налаштовано багатомовність для типу контенту @type',
-        ['@type' => $type_id]
-      );
     }
     catch (\Exception $e) {
       \Drupal::logger('migrate_from_drupal7')->error(
@@ -437,6 +433,12 @@ class ImportContentTypesForm extends FormBase {
 
       // Налаштовуємо відображення поля при перегляді (View Display).
       self::configureViewDisplay($type_id, $field_name, $field_info);
+    }
+
+    // Робимо поле перекладним.
+    if ($field && \Drupal::moduleHandler()->moduleExists('content_translation')) {
+      $field->setThirdPartySetting('content_translation', 'translation_sync', TRUE);
+      $field->save();
     }
   }
 
