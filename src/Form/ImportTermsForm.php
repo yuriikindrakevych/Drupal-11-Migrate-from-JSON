@@ -229,16 +229,6 @@ class ImportTermsForm extends FormBase {
           $context['sandbox']['current']++;
         }
 
-        // Перевіряємо чи завершили створення всіх термінів.
-        if ($context['sandbox']['current'] >= $context['sandbox']['total']) {
-          \Drupal::logger('migrate_from_drupal7')->info(
-            'Завершено створення @count термінів. Переходимо до встановлення ієрархії.',
-            ['@count' => $context['sandbox']['current']]
-          );
-          $context['sandbox']['phase'] = 'setup_hierarchy';
-          $context['sandbox']['current'] = 0;
-        }
-
         $context['message'] = t(
           'Створення термінів: @current з @total (@vocabulary)',
           [
@@ -247,10 +237,20 @@ class ImportTermsForm extends FormBase {
             '@vocabulary' => $context['sandbox']['vocabulary_name'],
           ]
         );
+
+        // Перевіряємо чи завершили створення всіх термінів.
+        if ($context['sandbox']['current'] >= $context['sandbox']['total']) {
+          \Drupal::logger('migrate_from_drupal7')->info(
+            'Завершено створення @count термінів. Переходимо до встановлення ієрархії.',
+            ['@count' => $context['sandbox']['current']]
+          );
+          $context['sandbox']['phase'] = 'setup_hierarchy';
+          $context['sandbox']['current'] = 0;  // Скидаємо для наступної фази
+        }
       }
 
       // ФАЗА 2: Встановлення ієрархії (parent).
-      if ($context['sandbox']['phase'] === 'setup_hierarchy') {
+      elseif ($context['sandbox']['phase'] === 'setup_hierarchy') {
         $terms_to_process = array_slice(
           $context['sandbox']['terms'],
           $context['sandbox']['current'],
@@ -271,15 +271,6 @@ class ImportTermsForm extends FormBase {
           $context['sandbox']['current']++;
         }
 
-        // Перевіряємо чи завершили встановлення ієрархії для всіх термінів.
-        if ($context['sandbox']['current'] >= $context['sandbox']['total']) {
-          \Drupal::logger('migrate_from_drupal7')->info(
-            'Завершено встановлення ієрархії. Переходимо до створення перекладів.'
-          );
-          $context['sandbox']['phase'] = 'create_translations';
-          $context['sandbox']['current'] = 0;
-        }
-
         $context['message'] = t(
           'Встановлення ієрархії: @current з @total (@vocabulary)',
           [
@@ -288,10 +279,19 @@ class ImportTermsForm extends FormBase {
             '@vocabulary' => $context['sandbox']['vocabulary_name'],
           ]
         );
+
+        // Перевіряємо чи завершили встановлення ієрархії для всіх термінів.
+        if ($context['sandbox']['current'] >= $context['sandbox']['total']) {
+          \Drupal::logger('migrate_from_drupal7')->info(
+            'Завершено встановлення ієрархії. Переходимо до створення перекладів.'
+          );
+          $context['sandbox']['phase'] = 'create_translations';
+          $context['sandbox']['current'] = 0;  // Скидаємо для наступної фази
+        }
       }
 
       // ФАЗА 3: Створення перекладів.
-      if ($context['sandbox']['phase'] === 'create_translations') {
+      elseif ($context['sandbox']['phase'] === 'create_translations') {
         $terms_to_process = array_slice(
           $context['sandbox']['terms'],
           $context['sandbox']['current'],
@@ -344,17 +344,21 @@ class ImportTermsForm extends FormBase {
         );
       }
 
-      // Розрахунок загального прогресу.
+      // Розрахунок загального прогресу (якщо ще не завершено).
       if (!isset($context['finished']) || $context['finished'] < 1) {
         // 3 фази: створення термінів (40%), ієрархія (30%), переклади (30%)
+        $phase_progress = $context['sandbox']['total'] > 0
+          ? $context['sandbox']['current'] / $context['sandbox']['total']
+          : 0;
+
         if ($context['sandbox']['phase'] === 'create_terms') {
-          $context['finished'] = ($context['sandbox']['current'] / $context['sandbox']['total']) * 0.4;
+          $context['finished'] = $phase_progress * 0.4;
         }
         elseif ($context['sandbox']['phase'] === 'setup_hierarchy') {
-          $context['finished'] = 0.4 + ($context['sandbox']['current'] / $context['sandbox']['total']) * 0.3;
+          $context['finished'] = 0.4 + ($phase_progress * 0.3);
         }
         elseif ($context['sandbox']['phase'] === 'create_translations') {
-          $context['finished'] = 0.7 + ($context['sandbox']['current'] / $context['sandbox']['total']) * 0.3;
+          $context['finished'] = 0.7 + ($phase_progress * 0.3);
         }
       }
     }
@@ -405,7 +409,22 @@ class ImportTermsForm extends FormBase {
       self::importTermFields($term, $term_data['fields']);
     }
 
-    $term->save();
+    // Зберігаємо термін.
+    try {
+      $term->save();
+    }
+    catch (\Exception $e) {
+      \Drupal::logger('migrate_from_drupal7')->error(
+        'Помилка збереження терміну @name: @message',
+        ['@name' => $term_data['name'], '@message' => $e->getMessage()]
+      );
+      throw $e;
+    }
+
+    // Перевіряємо що термін дійсно збережено.
+    if (!$term->id()) {
+      throw new \Exception('Термін не було збережено: ' . $term_data['name']);
+    }
 
     // Створюємо URL alias якщо є в даних.
     if (!empty($term_data['url_alias'])) {
@@ -416,10 +435,11 @@ class ImportTermsForm extends FormBase {
     }
 
     \Drupal::logger('migrate_from_drupal7')->info(
-      'Створено термін @name (@tid) для словника @vocab',
+      'Створено термін @name (новий tid: @tid, старий tid: @old_tid) для словника @vocab',
       [
         '@name' => $term_data['name'],
         '@tid' => $term->id(),
+        '@old_tid' => $term_data['tid'],
         '@vocab' => $vocabulary_id,
       ]
     );
@@ -485,7 +505,24 @@ class ImportTermsForm extends FormBase {
 
     // Завантажуємо термін і встановлюємо батьківський.
     $term = \Drupal::entityTypeManager()->getStorage('taxonomy_term')->load($new_tid);
-    if ($term) {
+    if (!$term) {
+      \Drupal::logger('migrate_from_drupal7')->error(
+        'Не вдалося завантажити термін @term (новий tid: @tid)',
+        ['@term' => $term_data['name'], '@tid' => $new_tid]
+      );
+      return;
+    }
+
+    // Перевіряємо що поле parent існує.
+    if (!$term->hasField('parent')) {
+      \Drupal::logger('migrate_from_drupal7')->error(
+        'Термін @term не має поля parent! Можливо потрібно увімкнути модуль taxonomy або створити поле.',
+        ['@term' => $term_data['name']]
+      );
+      return;
+    }
+
+    try {
       $term->set('parent', $new_parent_tid);
       $term->save();
 
@@ -499,10 +536,10 @@ class ImportTermsForm extends FormBase {
         ]
       );
     }
-    else {
+    catch (\Exception $e) {
       \Drupal::logger('migrate_from_drupal7')->error(
-        'Не вдалося завантажити термін @term (новий tid: @tid)',
-        ['@term' => $term_data['name'], '@tid' => $new_tid]
+        'Помилка встановлення parent для терміну @term: @message',
+        ['@term' => $term_data['name'], '@message' => $e->getMessage()]
       );
     }
   }
