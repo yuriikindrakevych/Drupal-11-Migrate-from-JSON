@@ -307,17 +307,25 @@ class ImportTermsForm extends FormBase {
   protected static function createTermWithTranslations($vocabulary_id, array $term_data, array $tid_map) {
     // 1. Визначаємо parent.
     $parent_id = NULL;
-    if (isset($term_data['parent']) && $term_data['parent'] !== '0' && $term_data['parent'] !== 0) {
-      // parent - це старий tid, дивимось в мапінгу новий tid.
-      $old_parent_tid = $term_data['parent'];
-      if (isset($tid_map[$old_parent_tid])) {
-        $parent_id = $tid_map[$old_parent_tid];
+    if (isset($term_data['parent'])) {
+      // Parent може бути рядком "1" або масивом ["1"].
+      $parent_value = $term_data['parent'];
+      if (is_array($parent_value)) {
+        $parent_value = reset($parent_value); // Беремо перший елемент.
       }
-      else {
-        \Drupal::logger('migrate_from_drupal7')->warning(
-          'Не знайдено parent @parent для терміну @term',
-          ['@parent' => $old_parent_tid, '@term' => $term_data['name']]
-        );
+
+      // Якщо parent не "0" - шукаємо в мапінгу.
+      if ($parent_value !== '0' && $parent_value !== 0 && $parent_value !== '') {
+        $old_parent_tid = $parent_value;
+        if (isset($tid_map[$old_parent_tid])) {
+          $parent_id = $tid_map[$old_parent_tid];
+        }
+        else {
+          \Drupal::logger('migrate_from_drupal7')->warning(
+            'Не знайдено parent @parent для терміну @term',
+            ['@parent' => $old_parent_tid, '@term' => $term_data['name']]
+          );
+        }
       }
     }
 
