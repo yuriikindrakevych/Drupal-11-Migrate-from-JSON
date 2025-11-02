@@ -37,3 +37,19 @@ migrate_from_drupal7.overview:
     _title: 'Міграція з Drupal 7'
   requirements:
     _permission: 'administer site configuration'
+
+migrate_from_drupal7.cron_settings:
+  path: '/admin/config/content/migrate-drupal7/cron-settings'
+  defaults:
+    _form: '\Drupal\migrate_from_drupal7\Form\CronSettingsForm'
+    _title: 'Налаштування автоматичного імпорту (Cron)'
+  requirements:
+    _permission: 'administer site configuration'
+
+migrate_from_drupal7.logs:
+  path: '/admin/config/content/migrate-drupal7/logs'
+  defaults:
+    _controller: '\Drupal\migrate_from_drupal7\Controller\LogsController::listLogs'
+    _title: 'Логування операцій'
+  requirements:
+    _permission: 'administer site configuration'

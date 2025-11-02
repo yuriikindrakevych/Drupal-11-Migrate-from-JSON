@@ -1,0 +1,162 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the Migrate from Drupal 7 module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function migrate_from_drupal7_schema() {
+  $schema = [];
+
+  // Таблиця для маппінгу old ID -> new ID.
+  $schema['migrate_from_drupal7_mapping'] = [
+    'description' => 'Зберігає маппінг між ID з Drupal 7 та ID в Drupal 11',
+    'fields' => [
+      'id' => [
+        'type' => 'serial',
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique mapping ID.',
+      ],
+      'entity_type' => [
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'Тип сутності: vocabulary, term, node.',
+      ],
+      'old_id' => [
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'ID з Drupal 7 (старий ID).',
+      ],
+      'new_id' => [
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'ID в Drupal 11 (новий ID).',
+      ],
+      'vocabulary_id' => [
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+        'default' => '',
+        'description' => 'ID словника (для термінів таксономії).',
+      ],
+      'created' => [
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Unix timestamp створення маппінгу.',
+      ],
+      'updated' => [
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Unix timestamp останнього оновлення.',
+      ],
+    ],
+    'primary key' => ['id'],
+    'indexes' => [
+      'entity_type' => ['entity_type'],
+      'old_id' => ['old_id'],
+      'new_id' => ['new_id'],
+      'vocabulary_id' => ['vocabulary_id'],
+    ],
+    'unique keys' => [
+      'entity_old_id' => ['entity_type', 'old_id', 'vocabulary_id'],
+    ],
+  ];
+
+  // Таблиця для логування операцій.
+  $schema['migrate_from_drupal7_log'] = [
+    'description' => 'Логування всіх операцій імпорту та оновлення',
+    'fields' => [
+      'id' => [
+        'type' => 'serial',
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique log ID.',
+      ],
+      'operation_type' => [
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'Тип операції: import, update, cron, delete.',
+      ],
+      'entity_type' => [
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'Тип сутності: vocabulary, term, node.',
+      ],
+      'entity_id' => [
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+        'default' => '',
+        'description' => 'ID сутності (може бути старий або новий).',
+      ],
+      'status' => [
+        'type' => 'varchar',
+        'length' => 16,
+        'not null' => TRUE,
+        'default' => 'success',
+        'description' => 'Статус операції: success, error, warning.',
+      ],
+      'message' => [
+        'type' => 'text',
+        'not null' => TRUE,
+        'description' => 'Повідомлення про операцію.',
+      ],
+      'details' => [
+        'type' => 'text',
+        'not null' => FALSE,
+        'description' => 'Додаткові деталі (JSON).',
+      ],
+      'created' => [
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Unix timestamp створення запису.',
+      ],
+      'user_id' => [
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'User ID хто запустив операцію (0 для cron).',
+      ],
+    ],
+    'primary key' => ['id'],
+    'indexes' => [
+      'operation_type' => ['operation_type'],
+      'entity_type' => ['entity_type'],
+      'status' => ['status'],
+      'created' => ['created'],
+      'user_id' => ['user_id'],
+    ],
+  ];
+
+  return $schema;
+}
+
+/**
+ * Implements hook_install().
+ */
+function migrate_from_drupal7_install() {
+  \Drupal::messenger()->addStatus(__FUNCTION__);
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function migrate_from_drupal7_uninstall() {
+  // Видаляємо всі конфігурації модуля.
+  \Drupal::configFactory()->getEditable('migrate_from_drupal7.settings')->delete();
+  \Drupal::configFactory()->getEditable('migrate_from_drupal7.cron')->delete();
+}
