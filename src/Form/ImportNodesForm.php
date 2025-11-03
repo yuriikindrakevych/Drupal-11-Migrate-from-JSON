@@ -300,33 +300,7 @@ class ImportNodesForm extends FormBase {
         return ['node' => NULL, 'action' => 'skip'];
       }
 
-      // ВАЖЛИВО: Перевіряємо та очищуємо поля в оригіналі перед створенням перекладу.
-      $skip_fields = ['nid', 'vid', 'uuid', 'langcode', 'type', 'title',
-                      'revision_timestamp', 'revision_uid', 'revision_log',
-                      'default_langcode', 'revision_translation_affected',
-                      'created', 'changed', 'status', 'promote', 'sticky', 'uid'];
-
-      foreach ($original_node->getFields(FALSE) as $field_name => $field_item_list) {
-        if (in_array($field_name, $skip_fields)) {
-          continue;
-        }
-
-        try {
-          $value = $field_item_list->getValue();
-          if (!is_array($value)) {
-            \Drupal::logger('migrate_from_drupal7')->warning(
-              'ОРИГІНАЛ має поле @field з некоректним значенням @type, виправляємо',
-              ['@field' => $field_name, '@type' => gettype($value)]
-            );
-            $original_node->set($field_name, []);
-          }
-        }
-        catch (\Exception $e) {
-          // Ігноруємо помилки.
-        }
-      }
-
-      // Створюємо переклад.
+      // Створюємо переклад (без очищення полів оригіналу).
       return self::createTranslation($original_node, $node_data, $base_url);
     }
     else {
@@ -374,44 +348,47 @@ class ImportNodesForm extends FormBase {
     $language = $node_data['language'] ?? 'uk';
 
     try {
-      // Створюємо переклад простим способом.
-      $translation = $original_node->addTranslation($language, []);
+      // Створюємо переклад - ТОЧНО як у працюючому прикладі TranslationExample.php
+      $translation = $original_node->addTranslation($language);
 
-      // ВАЖЛИВО: Одразу після addTranslation() очищуємо всі поля.
-      // addTranslation() копіює поля з оригіналу, і якесь може мати значення TRUE.
-      $skip_fields = ['nid', 'vid', 'uuid', 'langcode', 'type', 'title',
-                      'revision_timestamp', 'revision_uid', 'revision_log',
-                      'default_langcode', 'revision_translation_affected',
-                      'created', 'changed', 'status', 'promote', 'sticky', 'uid'];
+      // Встановлюємо title (обов'язкове поле).
+      $translation->set('title', $node_data['title']);
 
-      foreach ($translation->getFields(FALSE) as $field_name => $field_item_list) {
-        if (in_array($field_name, $skip_fields)) {
-          continue;
-        }
+      // Встановлюємо поля з JSON.
+      self::setNodeFields($translation, $node_data, $base_url);
 
-        try {
-          $value = $field_item_list->getValue();
-          if (!is_array($value)) {
-            \Drupal::logger('migrate_from_drupal7')->warning(
-              'Поле @field має некоректне значення @type після addTranslation, очищуємо',
-              ['@field' => $field_name, '@type' => gettype($value)]
-            );
-            $translation->set($field_name, []);
-          }
-        }
-        catch (\Exception $e) {
-          // Ігноруємо помилки.
+      // Копіюємо інші поля з оригіналу (як у TranslationExample.php).
+      // Це поля які НЕ перекладаються і не були встановлені з JSON.
+      $fields_set_from_json = ['title', 'body', 'status', 'promote', 'sticky', 'created', 'changed'];
+
+      // Додаємо всі field_* поля які є в JSON
+      if (!empty($node_data['fields'])) {
+        foreach (array_keys($node_data['fields']) as $field_name) {
+          $fields_set_from_json[] = $field_name;
         }
       }
 
-      // ВАЖЛИВО: Встановлюємо title ОДРАЗУ, бо це обов'язкове поле.
-      // Без title Drupal не зможе зберегти ноду (Column 'title' cannot be null).
-      $translation->set('title', $node_data['title']);
+      foreach ($original_node->getFieldDefinitions() as $field_name => $field_definition) {
+        // Пропускаємо системні поля та поля які вже встановили з JSON.
+        if (in_array($field_name, [
+            'nid', 'uuid', 'vid', 'langcode', 'default_langcode',
+            'content_translation_source', 'content_translation_outdated',
+            'revision_translation_affected', 'revision_default'
+          ]) || in_array($field_name, $fields_set_from_json)) {
+          continue;
+        }
 
-      // Тепер встановлюємо всі інші поля.
-      self::setNodeFields($translation, $node_data, $base_url);
+        // Копіюємо поле з оригіналу якщо воно не порожнє.
+        if ($original_node->hasField($field_name) && !$original_node->get($field_name)->isEmpty()) {
+          $translation->set($field_name, $original_node->get($field_name)->getValue());
+        }
+      }
 
-      // Зберігаємо переклад лише РАЗ з усіма полями.
+      // ВАЖЛИВО: Встановлюємо default_langcode = 0 (як у TranslationExample.php).
+      $translation->set('status', (int) ($node_data['status'] ?? 1));
+      $translation->set('default_langcode', 0);
+
+      // Зберігаємо.
       $translation->save();
 
       \Drupal::logger('migrate_from_drupal7')->info('Переклад @lang створено', ['@lang' => $language]);
