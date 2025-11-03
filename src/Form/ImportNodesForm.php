@@ -498,10 +498,37 @@ class ImportNodesForm extends FormBase {
         if ($original_node && !$original_node->hasTranslation($language)) {
           // Додаємо переклад до оригінальної ноди.
           try {
-            // Створюємо переклад тільки з title.
-            $translation = $original_node->addTranslation($language, [
-              'title' => $node_data['title'],
-            ]);
+            // ВАЖЛИВО: Очищуємо поля в ОРИГІНАЛЬНІЙ ноді перед створенням перекладу.
+            // Якщо оригінал має поля з некоректними значеннями, вони скопіюються в переклад.
+            foreach ($original_node->getFields(FALSE) as $field_name => $field) {
+              if (strpos($field_name, 'field_') !== 0 && $field_name !== 'body') {
+                continue;
+              }
+
+              try {
+                $value = $field->getValue();
+                if (!is_array($value)) {
+                  \Drupal::logger('migrate_from_drupal7')->warning(
+                    'ОРИГІНАЛ має поле @field з некоректним значенням (@type: @val), виправляємо',
+                    [
+                      '@field' => $field_name,
+                      '@type' => gettype($value),
+                      '@val' => var_export($value, TRUE),
+                    ]
+                  );
+                  $original_node->set($field_name, []);
+                }
+              }
+              catch (\Exception $e) {
+                // Ігноруємо помилки.
+              }
+            }
+
+            // Створюємо переклад БЕЗ параметрів, щоб уникнути синхронізації на цьому етапі.
+            $translation = $original_node->addTranslation($language);
+
+            // Встановлюємо title.
+            $translation->set('title', $node_data['title']);
 
             // ВАЖЛИВО: Одразу після addTranslation очищуємо всі поля з некоректними значеннями.
             // addTranslation може створити поля зі значенням TRUE замість масиву.
