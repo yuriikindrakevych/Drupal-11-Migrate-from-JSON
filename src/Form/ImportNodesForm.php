@@ -226,17 +226,18 @@ class ImportNodesForm extends FormBase {
     $changed = (int) ($node_data['changed'] ?? time());
     $is_translation = !empty($tnid) && $tnid != $nid && $tnid != '0';
 
-    // Обробка поля body - ТИМЧАСОВО ВІДКЛЮЧЕНО ДЛЯ ДІАГНОСТИКИ.
+    // Обробка поля body.
     $body_value = '';
     $body_summary = '';
-    $body_format = 'full_html';
+    $body_format = 'plain_text';
 
-    // if (!empty($node_data['fields']['body'][0])) {
-    //   $body_data = $node_data['fields']['body'][0];
-    //   $body_value = $body_data['value'] ?? '';
-    //   $body_summary = $body_data['summary'] ?? '';
-    //   $body_format = $body_data['format'] ?? 'full_html';
-    // }
+    if (!empty($node_data['fields']['body'][0]['value'])) {
+      $body_data = $node_data['fields']['body'][0];
+      $body_value = $body_data['value'] ?? '';
+      $body_summary = $body_data['summary'] ?? '';
+      // Якщо format = null або порожній, використовуємо plain_text.
+      $body_format = !empty($body_data['format']) ? $body_data['format'] : 'plain_text';
+    }
 
     \Drupal::logger('migrate_from_drupal7')->info(
       'Імпорт: nid=@nid, lang=@lang, is_trans=@trans, title=@title, changed=@changed',
