@@ -232,26 +232,34 @@ class ImportNodesForm extends FormBase {
       $existing_nid = $mapping_service->getNewId('node', $nid, $node_type);
 
       if ($existing_nid) {
-        // Оновлюємо.
+        // Перевіряємо чи існує нода.
         $node = Node::load($existing_nid);
-        $node->set('title', $title);
-        $node->save();
-        \Drupal::logger('migrate_from_drupal7')->info('Оновлено: nid=@nid', ['@nid' => $existing_nid]);
-        return ['success' => TRUE, 'nid' => $existing_nid];
+
+        if ($node) {
+          // Нода існує - оновлюємо.
+          $node->set('title', $title);
+          $node->save();
+          \Drupal::logger('migrate_from_drupal7')->info('Оновлено: nid=@nid', ['@nid' => $existing_nid]);
+          return ['success' => TRUE, 'nid' => $existing_nid];
+        }
+        else {
+          // Нода не існує (видалена) - видаляємо маппінг і створюємо нову.
+          \Drupal::logger('migrate_from_drupal7')->warning('Нода @nid з маппінгу не існує, створюємо нову', ['@nid' => $existing_nid]);
+          $mapping_service->deleteMapping('node', $nid);
+        }
       }
-      else {
-        // Створюємо нову.
-        $node = Node::create([
-          'type' => $node_type,
-          'title' => $title,
-          'langcode' => $language,
-          'uid' => 1,
-          'status' => 1,
-        ]);
-        $node->save();
-        \Drupal::logger('migrate_from_drupal7')->info('Створено: nid=@nid', ['@nid' => $node->id()]);
-        return ['success' => TRUE, 'nid' => $node->id()];
-      }
+
+      // Створюємо нову ноду.
+      $node = Node::create([
+        'type' => $node_type,
+        'title' => $title,
+        'langcode' => $language,
+        'uid' => 1,
+        'status' => 1,
+      ]);
+      $node->save();
+      \Drupal::logger('migrate_from_drupal7')->info('Створено: nid=@nid', ['@nid' => $node->id()]);
+      return ['success' => TRUE, 'nid' => $node->id()];
     }
   }
 
