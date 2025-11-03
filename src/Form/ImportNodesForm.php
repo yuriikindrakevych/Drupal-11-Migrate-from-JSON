@@ -498,10 +498,15 @@ class ImportNodesForm extends FormBase {
         if ($original_node && !$original_node->hasTranslation($language)) {
           // Додаємо переклад до оригінальної ноди.
           try {
-            // ВАЖЛИВО: Очищуємо поля в ОРИГІНАЛЬНІЙ ноді перед створенням перекладу.
+            // ВАЖЛИВО: Очищуємо ВСІ поля в ОРИГІНАЛЬНІЙ ноді перед створенням перекладу.
             // Якщо оригінал має поля з некоректними значеннями, вони скопіюються в переклад.
+            $skip_fields = ['nid', 'vid', 'uuid', 'langcode', 'type', 'title',
+                            'revision_timestamp', 'revision_uid', 'revision_log',
+                            'default_langcode', 'revision_translation_affected',
+                            'created', 'changed', 'status', 'promote', 'sticky', 'uid'];
+
             foreach ($original_node->getFields(FALSE) as $field_name => $field) {
-              if (strpos($field_name, 'field_') !== 0 && $field_name !== 'body') {
+              if (in_array($field_name, $skip_fields)) {
                 continue;
               }
 
@@ -530,13 +535,11 @@ class ImportNodesForm extends FormBase {
             // Встановлюємо title.
             $translation->set('title', $node_data['title']);
 
-            // ВАЖЛИВО: Одразу після addTranslation очищуємо всі поля з некоректними значеннями.
+            // ВАЖЛИВО: Одразу після addTranslation очищуємо ВСІ поля з некоректними значеннями.
             // addTranslation може створити поля зі значенням TRUE замість масиву.
             foreach ($translation->getFields(FALSE) as $field_name => $field) {
               // Пропускаємо базові поля.
-              if (in_array($field_name, ['nid', 'vid', 'uuid', 'langcode', 'type', 'title',
-                                          'revision_timestamp', 'revision_uid', 'revision_log',
-                                          'default_langcode', 'revision_translation_affected'])) {
+              if (in_array($field_name, $skip_fields)) {
                 continue;
               }
 
@@ -544,7 +547,7 @@ class ImportNodesForm extends FormBase {
                 $value = $field->getValue();
                 if (!is_array($value)) {
                   \Drupal::logger('migrate_from_drupal7')->warning(
-                    'addTranslation створив поле @field з некоректним значенням (@type: @val), очищуємо',
+                    'ПЕРЕКЛАД має поле @field з некоректним значенням (@type: @val), очищуємо',
                     [
                       '@field' => $field_name,
                       '@type' => gettype($value),
