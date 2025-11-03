@@ -300,6 +300,32 @@ class ImportNodesForm extends FormBase {
         return ['node' => NULL, 'action' => 'skip'];
       }
 
+      // ВАЖЛИВО: Перевіряємо та очищуємо поля в оригіналі перед створенням перекладу.
+      $skip_fields = ['nid', 'vid', 'uuid', 'langcode', 'type', 'title',
+                      'revision_timestamp', 'revision_uid', 'revision_log',
+                      'default_langcode', 'revision_translation_affected',
+                      'created', 'changed', 'status', 'promote', 'sticky', 'uid'];
+
+      foreach ($original_node->getFields(FALSE) as $field_name => $field_item_list) {
+        if (in_array($field_name, $skip_fields)) {
+          continue;
+        }
+
+        try {
+          $value = $field_item_list->getValue();
+          if (!is_array($value)) {
+            \Drupal::logger('migrate_from_drupal7')->warning(
+              'ОРИГІНАЛ має поле @field з некоректним значенням @type, виправляємо',
+              ['@field' => $field_name, '@type' => gettype($value)]
+            );
+            $original_node->set($field_name, []);
+          }
+        }
+        catch (\Exception $e) {
+          // Ігноруємо помилки.
+        }
+      }
+
       // Створюємо переклад.
       return self::createTranslation($original_node, $node_data, $base_url);
     }
@@ -350,6 +376,33 @@ class ImportNodesForm extends FormBase {
     try {
       // Створюємо переклад простим способом.
       $translation = $original_node->addTranslation($language, []);
+
+      // ВАЖЛИВО: Одразу після addTranslation() очищуємо всі поля.
+      // addTranslation() копіює поля з оригіналу, і якесь може мати значення TRUE.
+      $skip_fields = ['nid', 'vid', 'uuid', 'langcode', 'type', 'title',
+                      'revision_timestamp', 'revision_uid', 'revision_log',
+                      'default_langcode', 'revision_translation_affected',
+                      'created', 'changed', 'status', 'promote', 'sticky', 'uid'];
+
+      foreach ($translation->getFields(FALSE) as $field_name => $field_item_list) {
+        if (in_array($field_name, $skip_fields)) {
+          continue;
+        }
+
+        try {
+          $value = $field_item_list->getValue();
+          if (!is_array($value)) {
+            \Drupal::logger('migrate_from_drupal7')->warning(
+              'Поле @field має некоректне значення @type після addTranslation, очищуємо',
+              ['@field' => $field_name, '@type' => gettype($value)]
+            );
+            $translation->set($field_name, []);
+          }
+        }
+        catch (\Exception $e) {
+          // Ігноруємо помилки.
+        }
+      }
 
       // Встановлюємо ВСІ поля з JSON.
       self::setNodeFields($translation, $node_data, $base_url);
