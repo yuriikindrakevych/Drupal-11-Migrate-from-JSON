@@ -531,12 +531,14 @@ class ImportNodesForm extends FormBase {
               ]);
             }
 
-            // Імпортуємо поля для перекладу.
-            if (!empty($node_data['fields'])) {
-              $fields_to_import = $node_data['fields'];
-              unset($fields_to_import['body']);
-              self::importFields($translation, $fields_to_import, $base_url);
-            }
+            // Для перекладів НЕ імпортуємо додаткові поля (зображення, таксономія тощо).
+            // Ці поля зазвичай не є перекладними і спільні для всіх мов.
+            // Імпортуємо тільки перекладні текстові поля, якщо потрібно.
+
+            // Можна тут додати імпорт інших перекладних текстових полів якщо потрібно:
+            // if (!empty($node_data['fields']['field_subtitle'])) {
+            //   $translation->set('field_subtitle', $node_data['fields']['field_subtitle']);
+            // }
 
             // Встановлюємо часові мітки після імпорту полів.
             if (isset($node_data['created'])) {
@@ -544,6 +546,31 @@ class ImportNodesForm extends FormBase {
             }
             if (isset($node_data['changed'])) {
               $translation->set('changed', (int) $node_data['changed']);
+            }
+
+            // Перевіряємо поля перед збереженням.
+            // Логуємо всі поля для діагностики.
+            foreach ($translation->getFields(FALSE) as $field_name => $field) {
+              if (strpos($field_name, 'field_') === 0 || $field_name === 'body') {
+                $value = $translation->get($field_name)->getValue();
+                \Drupal::logger('migrate_from_drupal7')->debug(
+                  'Поле @field має значення: @value (тип: @type)',
+                  [
+                    '@field' => $field_name,
+                    '@value' => is_array($value) ? json_encode($value) : var_export($value, TRUE),
+                    '@type' => gettype($value),
+                  ]
+                );
+
+                // Якщо значення не масив - робимо його порожнім масивом.
+                if (!is_array($value)) {
+                  \Drupal::logger('migrate_from_drupal7')->warning(
+                    'Поле @field має некоректне значення (не масив), очищуємо',
+                    ['@field' => $field_name]
+                  );
+                  $translation->set($field_name, []);
+                }
+              }
             }
 
             $translation->save();
