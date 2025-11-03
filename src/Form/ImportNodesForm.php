@@ -226,17 +226,17 @@ class ImportNodesForm extends FormBase {
     $changed = (int) ($node_data['changed'] ?? time());
     $is_translation = !empty($tnid) && $tnid != $nid && $tnid != '0';
 
-    // Обробка поля body.
+    // Обробка поля body - ТИМЧАСОВО ВІДКЛЮЧЕНО ДЛЯ ДІАГНОСТИКИ.
     $body_value = '';
     $body_summary = '';
     $body_format = 'full_html';
 
-    if (!empty($node_data['fields']['body'][0])) {
-      $body_data = $node_data['fields']['body'][0];
-      $body_value = $body_data['value'] ?? '';
-      $body_summary = $body_data['summary'] ?? '';
-      $body_format = $body_data['format'] ?? 'full_html';
-    }
+    // if (!empty($node_data['fields']['body'][0])) {
+    //   $body_data = $node_data['fields']['body'][0];
+    //   $body_value = $body_data['value'] ?? '';
+    //   $body_summary = $body_data['summary'] ?? '';
+    //   $body_format = $body_data['format'] ?? 'full_html';
+    // }
 
     \Drupal::logger('migrate_from_drupal7')->info(
       'Імпорт: nid=@nid, lang=@lang, is_trans=@trans, title=@title, changed=@changed',
@@ -407,8 +407,8 @@ class ImportNodesForm extends FormBase {
         }
       }
 
-      // Створюємо нову ноду без body.
-      $node = Node::create([
+      // Створюємо нову ноду.
+      $node_values = [
         'type' => $node_type,
         'title' => $title,
         'langcode' => $language,
@@ -416,17 +416,18 @@ class ImportNodesForm extends FormBase {
         'status' => 1,
         'created' => $changed,
         'changed' => $changed,
-      ]);
+      ];
 
-      // Додаємо body після створення.
-      if (!empty($body_value) && $node->hasField('body')) {
-        $node->set('body', [
+      // Додаємо body якщо є.
+      if (!empty($body_value)) {
+        $node_values['body'] = [
           'value' => $body_value,
           'summary' => $body_summary,
           'format' => $body_format,
-        ]);
+        ];
       }
 
+      $node = Node::create($node_values);
       $node->save();
       \Drupal::logger('migrate_from_drupal7')->info('Створено: nid=@nid', ['@nid' => $node->id()]);
       return [
