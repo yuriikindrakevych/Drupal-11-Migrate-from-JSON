@@ -299,10 +299,12 @@ class ImportContentTypesForm extends FormBase {
         ]);
       }
 
-      $config->setDefaultLangcode('uk');
+      $config->setDefaultLangcode('site_default');
       $config->setLanguageAlterable(TRUE);
-      $config->setThirdPartySetting('content_translation', 'enabled', TRUE);
       $config->save();
+
+      $ctm = \Drupal::service('content_translation.manager');
+      $ctm->setEnabled('node', $type_id, TRUE);
     }
     catch (\Exception $e) {
       \Drupal::logger('migrate_from_drupal7')->error(
