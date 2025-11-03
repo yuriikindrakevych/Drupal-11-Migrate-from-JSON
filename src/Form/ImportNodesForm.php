@@ -278,7 +278,7 @@ class ImportNodesForm extends FormBase {
 
         if ($changed > $existing_changed) {
           // Потрібно оновити переклад.
-          $translation->set('title', $title);
+          $translation->setTitle($title);
           if ($translation->hasField('body')) {
             $translation->set('body', [
               'value' => $body_value,
@@ -286,8 +286,12 @@ class ImportNodesForm extends FormBase {
               'format' => $body_format,
             ]);
           }
-          $translation->set('changed', $changed);
           $translation->save();
+          // Встановлюємо changed після збереження.
+          if (method_exists($translation, 'setChangedTime')) {
+            $translation->setChangedTime($changed);
+            $translation->save();
+          }
           \Drupal::logger('migrate_from_drupal7')->info('Переклад оновлено: @lang (changed: @old → @new)', [
             '@lang' => $language,
             '@old' => date('Y-m-d H:i:s', $existing_changed),
@@ -333,7 +337,7 @@ class ImportNodesForm extends FormBase {
       }
 
       // Потім встановлюємо наші перекладені поля.
-      $translation->set('title', $title);
+      $translation->setTitle($title);
       if ($translation->hasField('body')) {
         $translation->set('body', [
           'value' => $body_value,
@@ -341,10 +345,15 @@ class ImportNodesForm extends FormBase {
           'format' => $body_format,
         ]);
       }
-      $translation->set('changed', $changed);
-      $translation->set('status', $original->isPublished() ? 1 : 0);
+      $translation->setPublished($original->isPublished());
       $translation->set('default_langcode', 0);
       $translation->save();
+
+      // Встановлюємо changed після збереження.
+      if (method_exists($translation, 'setChangedTime')) {
+        $translation->setChangedTime($changed);
+        $translation->save();
+      }
 
       \Drupal::logger('migrate_from_drupal7')->info('Переклад створено: @lang', ['@lang' => $language]);
       return [
@@ -368,7 +377,7 @@ class ImportNodesForm extends FormBase {
 
           if ($changed > $existing_changed) {
             // Потрібно оновити.
-            $node->set('title', $title);
+            $node->setTitle($title);
             if ($node->hasField('body')) {
               $node->set('body', [
                 'value' => $body_value,
@@ -376,8 +385,12 @@ class ImportNodesForm extends FormBase {
                 'format' => $body_format,
               ]);
             }
-            $node->set('changed', $changed);
             $node->save();
+            // Встановлюємо changed після збереження.
+            if (method_exists($node, 'setChangedTime')) {
+              $node->setChangedTime($changed);
+              $node->save();
+            }
             \Drupal::logger('migrate_from_drupal7')->info('Оновлено: nid=@nid (changed: @old → @new)', [
               '@nid' => $existing_nid,
               '@old' => date('Y-m-d H:i:s', $existing_changed),
@@ -408,21 +421,19 @@ class ImportNodesForm extends FormBase {
         }
       }
 
-      // Створюємо нову ноду.
-      $node_values = [
+      // Створюємо нову ноду - тільки тип і мова.
+      $node = Node::create([
         'type' => $node_type,
-        'title' => $title,
         'langcode' => $language,
-        'uid' => 1,
-        'status' => 1,
-        'created' => $changed,
-        'changed' => $changed,
-        'default_langcode' => TRUE,
-      ];
+      ]);
 
-      $node = Node::create($node_values);
+      // Встановлюємо поля через методи.
+      $node->setTitle($title);
+      $node->setOwnerId(1);
+      $node->setPublished(TRUE);
+      $node->setCreatedTime($changed);
 
-      // Додаємо body після створення, але перед збереженням.
+      // Додаємо body якщо є.
       if (!empty($body_value) && $node->hasField('body')) {
         $node->set('body', [
           'value' => $body_value,
@@ -431,7 +442,14 @@ class ImportNodesForm extends FormBase {
         ]);
       }
 
+      // Зберігаємо.
       $node->save();
+
+      // Встановлюємо changed після збереження.
+      if (method_exists($node, 'setChangedTime')) {
+        $node->setChangedTime($changed);
+        $node->save();
+      }
       \Drupal::logger('migrate_from_drupal7')->info('Створено: nid=@nid', ['@nid' => $node->id()]);
       return [
         'success' => TRUE,
