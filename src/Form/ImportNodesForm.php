@@ -467,14 +467,15 @@ class ImportNodesForm extends FormBase {
         if ($original_node && !$original_node->hasTranslation($language)) {
           // Додаємо переклад до оригінальної ноди.
           try {
-            $translation_values = [
+            // Створюємо переклад тільки з title.
+            $translation = $original_node->addTranslation($language, [
               'title' => $node_data['title'],
-              'status' => $node_data['status'] ?? 1,
-              'promote' => $node_data['promote'] ?? 0,
-              'sticky' => $node_data['sticky'] ?? 0,
-              'created' => $node_data['created'] ?? \Drupal::time()->getRequestTime(),
-              'changed' => $node_data['changed'] ?? \Drupal::time()->getRequestTime(),
-            ];
+            ]);
+
+            // Встановлюємо базові поля.
+            $translation->set('status', (int) ($node_data['status'] ?? 1));
+            $translation->set('promote', (int) ($node_data['promote'] ?? 0));
+            $translation->set('sticky', (int) ($node_data['sticky'] ?? 0));
 
             // Body для перекладу.
             $body_data = NULL;
@@ -493,19 +494,25 @@ class ImportNodesForm extends FormBase {
                 $body_value = self::processImagesInHtml($body_value, $base_url);
               }
 
-              $translation_values['body'] = [
+              $translation->set('body', [
                 'value' => $body_value,
                 'format' => $body_format,
-              ];
+              ]);
             }
-
-            $translation = $original_node->addTranslation($language, $translation_values);
 
             // Імпортуємо поля для перекладу.
             if (!empty($node_data['fields'])) {
               $fields_to_import = $node_data['fields'];
               unset($fields_to_import['body']);
               self::importFields($translation, $fields_to_import, $base_url);
+            }
+
+            // Встановлюємо часові мітки після імпорту полів.
+            if (isset($node_data['created'])) {
+              $translation->set('created', (int) $node_data['created']);
+            }
+            if (isset($node_data['changed'])) {
+              $translation->set('changed', (int) $node_data['changed']);
             }
 
             $translation->save();
@@ -700,7 +707,24 @@ class ImportNodesForm extends FormBase {
 
         $processed_values = [];
 
+        // Переконуємось що $field_values це масив.
+        if (!is_array($field_values)) {
+          \Drupal::logger('migrate_from_drupal7')->warning(
+            'Поле @field має некоректний тип значення: @type',
+            ['@field' => $field_name, '@type' => gettype($field_values)]
+          );
+          continue;
+        }
+
         foreach ($field_values as $field_value) {
+          // Пропускаємо не-масиви в значеннях полів.
+          if (!is_array($field_value)) {
+            \Drupal::logger('migrate_from_drupal7')->warning(
+              'Значення поля @field не є масивом: @value',
+              ['@field' => $field_name, '@value' => print_r($field_value, TRUE)]
+            );
+            continue;
+          }
           // Обробка різних типів полів.
           switch ($field_type) {
             case 'entity_reference':
@@ -790,22 +814,55 @@ class ImportNodesForm extends FormBase {
               }
               break;
 
+            case 'boolean':
+              // Boolean поля.
+              if (isset($field_value['value'])) {
+                $processed_values[] = ['value' => (bool) $field_value['value']];
+              }
+              break;
+
             case 'string':
+            case 'string_long':
+            case 'list_string':
             case 'integer':
+            case 'list_integer':
             case 'decimal':
             case 'float':
+            case 'timestamp':
+            case 'datetime':
+            case 'daterange':
+            case 'email':
+            case 'telephone':
+            case 'link':
               // Прості value поля.
               if (isset($field_value['value'])) {
                 $processed_values[] = ['value' => $field_value['value']];
               }
+              elseif (isset($field_value['uri'])) {
+                // Для link полів.
+                $processed_values[] = $field_value;
+              }
               break;
 
             default:
-              // Для інших типів - передаємо як є.
+              // Для інших типів - передаємо як є, якщо це масив з правильною структурою.
               if (isset($field_value['value'])) {
                 $processed_values[] = ['value' => $field_value['value']];
               }
+              elseif (isset($field_value['target_id'])) {
+                // Для entity_reference без обробки.
+                $processed_values[] = ['target_id' => $field_value['target_id']];
+              }
               else {
+                // Логуємо невідомі типи для діагностики.
+                \Drupal::logger('migrate_from_drupal7')->info(
+                  'Невідомий тип поля @type для поля @field, значення: @value',
+                  [
+                    '@type' => $field_type,
+                    '@field' => $field_name,
+                    '@value' => print_r($field_value, TRUE),
+                  ]
+                );
                 $processed_values[] = $field_value;
               }
               break;
