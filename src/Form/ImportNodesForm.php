@@ -106,6 +106,7 @@ class ImportNodesForm extends FormBase {
   public static function batchImport($node_type, array &$context) {
     $api_client = \Drupal::service('migrate_from_drupal7.api_client');
     $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
+    $log_service = \Drupal::service('migrate_from_drupal7.log');
 
     if (!isset($context['sandbox']['progress'])) {
       // Завантажуємо всі ноди.
@@ -161,14 +162,45 @@ class ImportNodesForm extends FormBase {
         if ($result['success']) {
           $context['sandbox']['imported']++;
           $mapping_service->saveMapping('node', $node_data['nid'], $result['nid'], $node_type);
+
+          // Логуємо в власну систему модуля.
+          $log_service->logSuccess(
+            $result['action'] ?? 'import',
+            'node',
+            $result['message'] ?? 'Імпорт успішний',
+            (string) $result['nid'],
+            [
+              'old_nid' => $node_data['nid'],
+              'title' => $node_data['title'],
+              'language' => $node_data['language'] ?? 'uk',
+            ]
+          );
         }
         else {
           $context['sandbox']['errors']++;
+
+          // Логуємо помилку.
+          $log_service->logError(
+            'import',
+            'node',
+            $result['error'] ?? 'Не вдалося імпортувати',
+            (string) $node_data['nid'],
+            ['title' => $node_data['title']]
+          );
         }
       }
       catch (\Exception $e) {
         $context['sandbox']['errors']++;
         \Drupal::logger('migrate_from_drupal7')->error('Помилка: @msg', ['@msg' => $e->getMessage()]);
+
+        // Логуємо помилку в власну систему.
+        $log_service->logError(
+          'import',
+          'node',
+          'Помилка імпорту: ' . $e->getMessage(),
+          (string) $node_data['nid'],
+          ['title' => $node_data['title']]
+        );
       }
 
       $context['sandbox']['progress']++;
@@ -211,13 +243,19 @@ class ImportNodesForm extends FormBase {
 
       if (!$original_new_nid) {
         \Drupal::logger('migrate_from_drupal7')->warning('Оригінал не знайдено для tnid=@tnid', ['@tnid' => $tnid]);
-        return ['success' => FALSE];
+        return [
+          'success' => FALSE,
+          'error' => "Оригінал не знайдено для tnid=$tnid",
+        ];
       }
 
       $original = Node::load($original_new_nid);
 
       if (!$original) {
-        return ['success' => FALSE];
+        return [
+          'success' => FALSE,
+          'error' => "Оригінальна нода #$original_new_nid не знайдена",
+        ];
       }
 
       if ($original->hasTranslation($language)) {
@@ -235,12 +273,22 @@ class ImportNodesForm extends FormBase {
             '@old' => date('Y-m-d H:i:s', $existing_changed),
             '@new' => date('Y-m-d H:i:s', $changed),
           ]);
-          return ['success' => TRUE, 'nid' => $original_new_nid];
+          return [
+            'success' => TRUE,
+            'nid' => $original_new_nid,
+            'action' => 'update',
+            'message' => "Переклад оновлено: $language (changed: " . date('Y-m-d H:i:s', $existing_changed) . ' → ' . date('Y-m-d H:i:s', $changed) . ')',
+          ];
         }
         else {
           // Переклад актуальний - пропускаємо.
           \Drupal::logger('migrate_from_drupal7')->info('Переклад актуальний, пропускаємо: @lang', ['@lang' => $language]);
-          return ['success' => TRUE, 'nid' => $original_new_nid];
+          return [
+            'success' => TRUE,
+            'nid' => $original_new_nid,
+            'action' => 'skip',
+            'message' => "Переклад актуальний, пропущено: $language",
+          ];
         }
       }
 
@@ -252,7 +300,12 @@ class ImportNodesForm extends FormBase {
       $translation->save();
 
       \Drupal::logger('migrate_from_drupal7')->info('Переклад створено: @lang', ['@lang' => $language]);
-      return ['success' => TRUE, 'nid' => $original_new_nid];
+      return [
+        'success' => TRUE,
+        'nid' => $original_new_nid,
+        'action' => 'import',
+        'message' => "Переклад створено: $language",
+      ];
     }
     else {
       // Це оригінал.
@@ -276,12 +329,22 @@ class ImportNodesForm extends FormBase {
               '@old' => date('Y-m-d H:i:s', $existing_changed),
               '@new' => date('Y-m-d H:i:s', $changed),
             ]);
-            return ['success' => TRUE, 'nid' => $existing_nid];
+            return [
+              'success' => TRUE,
+              'nid' => $existing_nid,
+              'action' => 'update',
+              'message' => "Оновлено (changed: " . date('Y-m-d H:i:s', $existing_changed) . ' → ' . date('Y-m-d H:i:s', $changed) . ')',
+            ];
           }
           else {
             // Нода актуальна - пропускаємо.
             \Drupal::logger('migrate_from_drupal7')->info('Нода актуальна, пропускаємо: nid=@nid', ['@nid' => $existing_nid]);
-            return ['success' => TRUE, 'nid' => $existing_nid];
+            return [
+              'success' => TRUE,
+              'nid' => $existing_nid,
+              'action' => 'skip',
+              'message' => 'Нода актуальна, пропущено',
+            ];
           }
         }
         else {
@@ -303,7 +366,12 @@ class ImportNodesForm extends FormBase {
       ]);
       $node->save();
       \Drupal::logger('migrate_from_drupal7')->info('Створено: nid=@nid', ['@nid' => $node->id()]);
-      return ['success' => TRUE, 'nid' => $node->id()];
+      return [
+        'success' => TRUE,
+        'nid' => $node->id(),
+        'action' => 'import',
+        'message' => "Створено нову ноду #" . $node->id(),
+      ];
     }
   }
 
