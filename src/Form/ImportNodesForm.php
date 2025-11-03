@@ -531,51 +531,34 @@ class ImportNodesForm extends FormBase {
               ]);
             }
 
-            // Копіюємо не-перекладні поля з оригіналу (зображення, файли, таксономія).
-            // Ці поля спільні для всіх мов.
+            // Обробляємо додаткові поля для перекладу.
+            if (!empty($node_data['fields'])) {
+              $fields_to_import = $node_data['fields'];
+              unset($fields_to_import['body']); // body вже імпортували
+
+              // Імпортуємо перекладні поля з Drupal 7 (включно з field_image якщо перекладне).
+              self::importFieldsForTranslation($translation, $fields_to_import, $base_url, $original_node);
+            }
+
+            // Копіюємо не-перекладні поля з оригіналу (якщо вони не були в Drupal 7 даних).
             foreach ($original_node->getFieldDefinitions() as $field_name => $field_definition) {
-              // Пропускаємо системні поля та поля які вже встановили.
+              // Пропускаємо системні поля.
               if (strpos($field_name, 'field_') !== 0) {
                 continue;
               }
 
               $is_translatable = $field_definition->isTranslatable();
-              $original_value = $original_node->get($field_name)->getValue();
-
-              \Drupal::logger('migrate_from_drupal7')->info(
-                'Аналіз поля @field: translatable=@trans, has_value=@has_val, value=@val',
-                [
-                  '@field' => $field_name,
-                  '@trans' => $is_translatable ? 'ТАК' : 'НІ',
-                  '@has_val' => !empty($original_value) ? 'ТАК' : 'НІ',
-                  '@val' => json_encode($original_value),
-                ]
-              );
-
-              // Перевіряємо чи поле є перекладним.
-              if ($is_translatable) {
-                // Перекладні поля - імпортуємо з Drupal 7 якщо потрібно.
-                // Наразі імпортуємо тільки title і body.
-                \Drupal::logger('migrate_from_drupal7')->info(
-                  'Поле @field є перекладним, пропускаємо копіювання',
-                  ['@field' => $field_name]
-                );
-                continue;
-              }
 
               // Не-перекладні поля - копіюємо з оригіналу.
-              if (!empty($original_value)) {
-                $translation->set($field_name, $original_value);
-                \Drupal::logger('migrate_from_drupal7')->info(
-                  'Скопійовано не-перекладне поле @field з оригіналу: @value',
-                  ['@field' => $field_name, '@value' => json_encode($original_value)]
-                );
-              }
-              else {
-                \Drupal::logger('migrate_from_drupal7')->warning(
-                  'Поле @field порожнє в оригіналі, нічого копіювати',
-                  ['@field' => $field_name]
-                );
+              if (!$is_translatable) {
+                $original_value = $original_node->get($field_name)->getValue();
+                if (!empty($original_value)) {
+                  $translation->set($field_name, $original_value);
+                  \Drupal::logger('migrate_from_drupal7')->info(
+                    'Скопійовано не-перекладне поле @field з оригіналу',
+                    ['@field' => $field_name]
+                  );
+                }
               }
             }
 
@@ -948,6 +931,142 @@ class ImportNodesForm extends FormBase {
       catch (\Exception $e) {
         \Drupal::logger('migrate_from_drupal7')->error(
           'Помилка імпорту поля @field: @message',
+          ['@field' => $field_name, '@message' => $e->getMessage()]
+        );
+      }
+    }
+  }
+
+  /**
+   * Імпортувати поля для перекладу.
+   *
+   * Імпортує тільки перекладні поля з даних Drupal 7.
+   * Не-перекладні поля копіюються з оригіналу окремо.
+   *
+   * @param \Drupal\Core\Entity\ContentEntityInterface $translation
+   *   Переклад entity.
+   * @param array $fields_data
+   *   Дані полів з Drupal 7.
+   * @param string $base_url
+   *   Base URL Drupal 7 сайту.
+   * @param \Drupal\node\Entity\Node $original_node
+   *   Оригінальна нода для перевірки чи поле перекладне.
+   */
+  protected static function importFieldsForTranslation($translation, array $fields_data, string $base_url, Node $original_node): void {
+    $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
+
+    foreach ($fields_data as $field_name => $field_values) {
+      if (!$translation->hasField($field_name) || empty($field_values)) {
+        continue;
+      }
+
+      // Перевіряємо чи поле перекладне.
+      $field_definition = $translation->getFieldDefinition($field_name);
+      if (!$field_definition->isTranslatable()) {
+        // Не-перекладні поля будуть скопійовані з оригіналу пізніше.
+        \Drupal::logger('migrate_from_drupal7')->info(
+          'Поле @field не перекладне, буде скопійовано з оригіналу',
+          ['@field' => $field_name]
+        );
+        continue;
+      }
+
+      \Drupal::logger('migrate_from_drupal7')->info(
+        'Імпорт перекладного поля @field для перекладу',
+        ['@field' => $field_name]
+      );
+
+      try {
+        $field_type = $field_definition->getType();
+        $processed_values = [];
+
+        // Переконуємось що $field_values це масив.
+        if (!is_array($field_values)) {
+          \Drupal::logger('migrate_from_drupal7')->warning(
+            'Поле @field має некоректний тип значення: @type',
+            ['@field' => $field_name, '@type' => gettype($field_values)]
+          );
+          continue;
+        }
+
+        foreach ($field_values as $field_value) {
+          // Пропускаємо не-масиви в значеннях полів.
+          if (!is_array($field_value)) {
+            \Drupal::logger('migrate_from_drupal7')->warning(
+              'Значення поля @field не є масивом: @value',
+              ['@field' => $field_name, '@value' => print_r($field_value, TRUE)]
+            );
+            continue;
+          }
+
+          // Обробка різних типів полів (тільки найпоширеніші перекладні типи).
+          switch ($field_type) {
+            case 'text_long':
+            case 'text_with_summary':
+              $text_value = $field_value['value'] ?? '';
+              $text_format = $field_value['format'] ?? 'full_html';
+
+              // Обробляємо зображення в HTML.
+              if ($text_format === 'full_html' && !empty($text_value)) {
+                $text_value = self::processImagesInHtml($text_value, $base_url);
+              }
+
+              $processed_values[] = [
+                'value' => $text_value,
+                'format' => $text_format,
+              ];
+              break;
+
+            case 'image':
+            case 'file':
+              $file_entity = self::importFile($field_value, $field_definition, $original_node, $base_url);
+              if ($file_entity) {
+                $file_data = ['target_id' => $file_entity->id()];
+
+                // Для image додаємо alt та title (перекладені).
+                if ($field_type === 'image') {
+                  $file_data['alt'] = $field_value['alt'] ?? '';
+                  $file_data['title'] = $field_value['title'] ?? '';
+
+                  \Drupal::logger('migrate_from_drupal7')->info(
+                    'Імпортовано зображення для перекладу: alt=@alt',
+                    ['@alt' => $file_data['alt']]
+                  );
+                }
+
+                $processed_values[] = $file_data;
+              }
+              break;
+
+            case 'string':
+            case 'string_long':
+            case 'list_string':
+              // Прості текстові поля.
+              if (isset($field_value['value'])) {
+                $processed_values[] = ['value' => $field_value['value']];
+              }
+              break;
+
+            default:
+              // Для інших типів - передаємо як є.
+              if (isset($field_value['value'])) {
+                $processed_values[] = ['value' => $field_value['value']];
+              }
+              break;
+          }
+        }
+
+        if (!empty($processed_values)) {
+          $translation->set($field_name, $processed_values);
+          \Drupal::logger('migrate_from_drupal7')->info(
+            'Встановлено перекладне поле @field: @count значень',
+            ['@field' => $field_name, '@count' => count($processed_values)]
+          );
+        }
+      }
+      catch (\Exception $e) {
+        \Drupal::logger('migrate_from_drupal7')->error(
+          'Помилка імпорту перекладного поля @field: @message',
           ['@field' => $field_name, '@message' => $e->getMessage()]
         );
       }
