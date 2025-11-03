@@ -403,11 +403,26 @@ class ImportNodesForm extends FormBase {
 
     // Перевіряємо чи це переклад (tnid != nid).
     $tnid = $node_data['tnid'] ?? $old_nid;
-    $is_translation = !empty($tnid) && $tnid != $old_nid;
+    $is_translation = !empty($tnid) && $tnid != $old_nid && $tnid != '0';
+
+    \Drupal::logger('migrate_from_drupal7')->info(
+      'importOrUpdateNode: nid=@nid, tnid=@tnid, is_translation=@is_trans, language=@lang',
+      [
+        '@nid' => $old_nid,
+        '@tnid' => $tnid,
+        '@is_trans' => $is_translation ? 'YES' : 'NO',
+        '@lang' => $language,
+      ]
+    );
 
     if ($is_translation) {
       // Це переклад - шукаємо оригінальну ноду.
       $original_new_nid = $mapping_service->getNewId('node', $tnid, $node_type);
+
+      \Drupal::logger('migrate_from_drupal7')->info(
+        'Шукаємо оригінал для перекладу: tnid=@tnid, new_nid=@new_nid',
+        ['@tnid' => $tnid, '@new_nid' => $original_new_nid ?? 'NULL']
+      );
 
       if ($original_new_nid) {
         $original_node = Node::load($original_new_nid);
@@ -461,6 +476,11 @@ class ImportNodesForm extends FormBase {
             // Зберігаємо маппінг для перекладу.
             $mapping_service->saveMapping('node', $old_nid, $original_new_nid, $node_type);
 
+            \Drupal::logger('migrate_from_drupal7')->info(
+              'Додано переклад @lang для ноди @nid (original nid: @orig)',
+              ['@lang' => $language, '@nid' => $old_nid, '@orig' => $original_new_nid]
+            );
+
             return ['node' => $translation, 'action' => 'translation'];
           }
           catch (\Exception $e) {
@@ -470,6 +490,18 @@ class ImportNodesForm extends FormBase {
             );
           }
         }
+        else {
+          \Drupal::logger('migrate_from_drupal7')->warning(
+            'Не знайдено оригінальну ноду або переклад вже існує: nid=@nid, tnid=@tnid, lang=@lang',
+            ['@nid' => $old_nid, '@tnid' => $tnid, '@lang' => $language]
+          );
+        }
+      }
+      else {
+        \Drupal::logger('migrate_from_drupal7')->warning(
+          'Не знайдено mapping для оригінальної ноди: tnid=@tnid',
+          ['@tnid' => $tnid]
+        );
       }
     }
 
@@ -694,7 +726,23 @@ class ImportNodesForm extends FormBase {
 
                 // Для image додаємо alt та title.
                 if ($field_type === 'image') {
-                  $file_data['alt'] = $field_value['alt'] ?? '';
+                  $alt_text = $field_value['alt'] ?? '';
+
+                  // Якщо alt порожній, генеруємо з назви ноди.
+                  if (empty($alt_text)) {
+                    $node_title = $node->getTitle();
+                    $current_count = count($processed_values) + 1;
+
+                    // Якщо поле множинне та вже є значення.
+                    if ($field_definition->getFieldStorageDefinition()->getCardinality() !== 1 && $current_count > 1) {
+                      $alt_text = $node_title . ' - зображення ' . $current_count;
+                    }
+                    else {
+                      $alt_text = $node_title;
+                    }
+                  }
+
+                  $file_data['alt'] = $alt_text;
                   $file_data['title'] = $field_value['title'] ?? '';
                 }
 
@@ -806,6 +854,11 @@ class ImportNodesForm extends FormBase {
     $field_settings = $field_definition->getSettings();
     $uri_scheme = $field_settings['uri_scheme'] ?? 'public';
     $file_directory = $field_settings['file_directory'] ?? '';
+
+    // Замінюємо токени в шляху.
+    if (!empty($file_directory)) {
+      $file_directory = \Drupal::token()->replace($file_directory, ['node' => $node]);
+    }
 
     // Формуємо шлях збереження.
     $destination_directory = $uri_scheme . '://';
