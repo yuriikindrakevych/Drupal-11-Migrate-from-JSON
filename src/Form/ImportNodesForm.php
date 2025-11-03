@@ -234,6 +234,10 @@ class ImportNodesForm extends FormBase {
       $context['sandbox']['skipped'] = 0;
       $context['sandbox']['errors'] = 0;
 
+      // Зберігаємо base_url для використання в файлових операціях.
+      $config = \Drupal::config('migrate_from_drupal7.settings');
+      $context['sandbox']['base_url'] = $config->get('api_url') ?? '';
+
       \Drupal::logger('migrate_from_drupal7')->info(
         'Початок імпорту @count матеріалів типу @type',
         ['@count' => $context['sandbox']['total'], '@type' => $node_type]
@@ -290,7 +294,7 @@ class ImportNodesForm extends FormBase {
         }
 
         // Імпортуємо або оновлюємо node.
-        $result = self::importOrUpdateNode($node_data, $skip_unchanged);
+        $result = self::importOrUpdateNode($node_data, $skip_unchanged, $context['sandbox']['base_url'] ?? '');
 
         if ($result['action'] === 'import') {
           $context['sandbox']['imported']++;
@@ -377,11 +381,13 @@ class ImportNodesForm extends FormBase {
    *   Дані node з Drupal 7.
    * @param bool $skip_unchanged
    *   Пропускати незмінені матеріали.
+   * @param string $base_url
+   *   Base URL Drupal 7 сайту.
    *
    * @return array
    *   ['node' => Node|null, 'action' => 'import'|'update'|'skip']
    */
-  protected static function importOrUpdateNode(array $node_data, bool $skip_unchanged): array {
+  protected static function importOrUpdateNode(array $node_data, bool $skip_unchanged, string $base_url): array {
     $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
     $old_nid = $node_data['nid'];
     $node_type = $node_data['type'];
@@ -414,12 +420,12 @@ class ImportNodesForm extends FormBase {
     // Створюємо або оновлюємо node.
     if ($is_update && $node) {
       // Оновлюємо існуючий.
-      self::updateNode($node, $node_data);
+      self::updateNode($node, $node_data, $base_url);
       $action = 'update';
     }
     else {
       // Створюємо новий.
-      $node = self::createNode($node_data);
+      $node = self::createNode($node_data, $base_url);
       $action = 'import';
     }
 
@@ -438,7 +444,7 @@ class ImportNodesForm extends FormBase {
   /**
    * Створити новий node.
    */
-  protected static function createNode(array $node_data): Node {
+  protected static function createNode(array $node_data, string $base_url): Node {
     $values = [
       'type' => $node_data['type'],
       'title' => $node_data['title'],
@@ -466,7 +472,7 @@ class ImportNodesForm extends FormBase {
 
       // Обробляємо зображення в HTML body.
       if ($body_format === 'full_html' && !empty($body_value)) {
-        $body_value = self::processImagesInHtml($body_value);
+        $body_value = self::processImagesInHtml($body_value, $base_url);
       }
 
       $values['body'] = [
@@ -481,7 +487,7 @@ class ImportNodesForm extends FormBase {
     if (!empty($node_data['fields'])) {
       $fields_to_import = $node_data['fields'];
       unset($fields_to_import['body']);  // body вже імпортували
-      self::importFields($node, $fields_to_import);
+      self::importFields($node, $fields_to_import, $base_url);
     }
 
     return $node;
@@ -490,7 +496,7 @@ class ImportNodesForm extends FormBase {
   /**
    * Оновити існуючий node.
    */
-  protected static function updateNode(Node $node, array $node_data): void {
+  protected static function updateNode(Node $node, array $node_data, string $base_url): void {
     $node->set('title', $node_data['title']);
     $node->set('status', $node_data['status'] ?? 1);
     $node->set('promote', $node_data['promote'] ?? 0);
@@ -512,7 +518,7 @@ class ImportNodesForm extends FormBase {
 
       // Обробляємо зображення в HTML body.
       if ($body_format === 'full_html' && !empty($body_value)) {
-        $body_value = self::processImagesInHtml($body_value);
+        $body_value = self::processImagesInHtml($body_value, $base_url);
       }
 
       $node->set('body', [
@@ -525,14 +531,14 @@ class ImportNodesForm extends FormBase {
     if (!empty($node_data['fields'])) {
       $fields_to_import = $node_data['fields'];
       unset($fields_to_import['body']);  // body вже імпортували
-      self::importFields($node, $fields_to_import);
+      self::importFields($node, $fields_to_import, $base_url);
     }
   }
 
   /**
    * Імпортувати поля node.
    */
-  protected static function importFields(Node $node, array $fields_data): void {
+  protected static function importFields(Node $node, array $fields_data, string $base_url): void {
     $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
 
     foreach ($fields_data as $field_name => $field_values) {
@@ -595,7 +601,7 @@ class ImportNodesForm extends FormBase {
 
               // Обробляємо зображення в HTML.
               if ($text_format === 'full_html' && !empty($text_value)) {
-                $text_value = self::processImagesInHtml($text_value);
+                $text_value = self::processImagesInHtml($text_value, $base_url);
               }
 
               $processed_values[] = [
@@ -606,7 +612,7 @@ class ImportNodesForm extends FormBase {
 
             case 'image':
             case 'file':
-              $file_entity = self::importFile($field_value, $field_definition, $node);
+              $file_entity = self::importFile($field_value, $field_definition, $node, $base_url);
               if ($file_entity) {
                 $file_data = ['target_id' => $file_entity->id()];
 
@@ -700,23 +706,17 @@ class ImportNodesForm extends FormBase {
    *   Визначення поля.
    * @param \Drupal\node\Entity\Node $node
    *   Node до якого додається файл.
+   * @param string $base_url
+   *   Base URL Drupal 7 сайту.
    *
    * @return \Drupal\file\Entity\File|null
    *   File entity або NULL.
    */
-  protected static function importFile(array $field_value, $field_definition, Node $node): ?File {
+  protected static function importFile(array $field_value, $field_definition, Node $node, string $base_url): ?File {
     // Отримуємо URL файлу з Drupal 7.
     $file_url = $field_value['url'] ?? $field_value['uri'] ?? NULL;
 
-    if (empty($file_url)) {
-      return NULL;
-    }
-
-    $config = \Drupal::config('migrate_from_drupal7.settings');
-    $base_url = $config->get('api_url');
-
-    if (empty($base_url)) {
-      \Drupal::logger('migrate_from_drupal7')->error('API URL не налаштовано');
+    if (empty($file_url) || empty($base_url)) {
       return NULL;
     }
 
@@ -823,12 +823,14 @@ class ImportNodesForm extends FormBase {
    *
    * @param string $html
    *   HTML текст.
+   * @param string $base_url
+   *   Base URL Drupal 7 сайту.
    *
    * @return string
    *   Оброблений HTML текст.
    */
-  protected static function processImagesInHtml(string $html): string {
-    if (empty($html)) {
+  protected static function processImagesInHtml(string $html, string $base_url): string {
+    if (empty($html) || empty($base_url)) {
       return $html;
     }
 
@@ -838,13 +840,6 @@ class ImportNodesForm extends FormBase {
     preg_match_all($pattern, $html, $matches);
 
     if (empty($matches[0])) {
-      return $html;
-    }
-
-    $config = \Drupal::config('migrate_from_drupal7.settings');
-    $base_url = $config->get('api_url');
-
-    if (empty($base_url)) {
       return $html;
     }
 
