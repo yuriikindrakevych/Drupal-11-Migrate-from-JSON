@@ -531,14 +531,31 @@ class ImportNodesForm extends FormBase {
               ]);
             }
 
-            // Для перекладів НЕ імпортуємо додаткові поля (зображення, таксономія тощо).
-            // Ці поля зазвичай не є перекладними і спільні для всіх мов.
-            // Імпортуємо тільки перекладні текстові поля, якщо потрібно.
+            // Копіюємо не-перекладні поля з оригіналу (зображення, файли, таксономія).
+            // Ці поля спільні для всіх мов.
+            foreach ($original_node->getFieldDefinitions() as $field_name => $field_definition) {
+              // Пропускаємо системні поля та поля які вже встановили.
+              if (strpos($field_name, 'field_') !== 0) {
+                continue;
+              }
 
-            // Можна тут додати імпорт інших перекладних текстових полів якщо потрібно:
-            // if (!empty($node_data['fields']['field_subtitle'])) {
-            //   $translation->set('field_subtitle', $node_data['fields']['field_subtitle']);
-            // }
+              // Перевіряємо чи поле є перекладним.
+              if ($field_definition->isTranslatable()) {
+                // Перекладні поля - імпортуємо з Drupal 7 якщо потрібно.
+                // Наразі імпортуємо тільки title і body.
+                continue;
+              }
+
+              // Не-перекладні поля - копіюємо з оригіналу.
+              $original_value = $original_node->get($field_name)->getValue();
+              if (!empty($original_value)) {
+                $translation->set($field_name, $original_value);
+                \Drupal::logger('migrate_from_drupal7')->info(
+                  'Скопійовано не-перекладне поле @field з оригіналу',
+                  ['@field' => $field_name]
+                );
+              }
+            }
 
             // Встановлюємо часові мітки після імпорту полів.
             if (isset($node_data['created'])) {
@@ -546,31 +563,6 @@ class ImportNodesForm extends FormBase {
             }
             if (isset($node_data['changed'])) {
               $translation->set('changed', (int) $node_data['changed']);
-            }
-
-            // Перевіряємо поля перед збереженням.
-            // Логуємо всі поля для діагностики.
-            foreach ($translation->getFields(FALSE) as $field_name => $field) {
-              if (strpos($field_name, 'field_') === 0 || $field_name === 'body') {
-                $value = $translation->get($field_name)->getValue();
-                \Drupal::logger('migrate_from_drupal7')->debug(
-                  'Поле @field має значення: @value (тип: @type)',
-                  [
-                    '@field' => $field_name,
-                    '@value' => is_array($value) ? json_encode($value) : var_export($value, TRUE),
-                    '@type' => gettype($value),
-                  ]
-                );
-
-                // Якщо значення не масив - робимо його порожнім масивом.
-                if (!is_array($value)) {
-                  \Drupal::logger('migrate_from_drupal7')->warning(
-                    'Поле @field має некоректне значення (не масив), очищуємо',
-                    ['@field' => $field_name]
-                  );
-                  $translation->set($field_name, []);
-                }
-              }
             }
 
             $translation->save();
