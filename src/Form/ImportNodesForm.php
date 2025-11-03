@@ -222,9 +222,37 @@ class ImportNodesForm extends FormBase {
         return;
       }
 
-      // Зберігаємо всі NID для обробки.
-      $context['sandbox']['all_nodes'] = $initial_data;
-      $context['sandbox']['total'] = count($initial_data);
+      // Розділяємо на оригінали та переклади для двопроходної обробки.
+      $originals = [];
+      $translations = [];
+
+      foreach ($initial_data as $node_preview) {
+        // Отримуємо базову інформацію про ноду.
+        $nid = $node_preview['nid'];
+
+        // Для визначення чи це переклад, потрібно завантажити повні дані.
+        $node_full_data = $api_client->getNodeById($nid);
+
+        if (!empty($node_full_data)) {
+          $tnid = $node_full_data['tnid'] ?? $nid;
+          $is_translation = !empty($tnid) && $tnid != $nid && $tnid != '0';
+
+          if ($is_translation) {
+            $translations[] = $node_preview;
+          }
+          else {
+            $originals[] = $node_preview;
+          }
+        }
+        else {
+          // Якщо не вдалося завантажити дані, додаємо до оригіналів.
+          $originals[] = $node_preview;
+        }
+      }
+
+      // Об'єднуємо: спочатку оригінали, потім переклади.
+      $context['sandbox']['all_nodes'] = array_merge($originals, $translations);
+      $context['sandbox']['total'] = count($context['sandbox']['all_nodes']);
       $context['sandbox']['progress'] = 0;
       $context['sandbox']['node_type'] = $node_type;
       $context['sandbox']['batch_size'] = $batch_size;
@@ -233,6 +261,8 @@ class ImportNodesForm extends FormBase {
       $context['sandbox']['updated'] = 0;
       $context['sandbox']['skipped'] = 0;
       $context['sandbox']['errors'] = 0;
+      $context['sandbox']['originals_count'] = count($originals);
+      $context['sandbox']['translations_count'] = count($translations);
 
       // Зберігаємо base_url для використання в файлових операціях.
       $config = \Drupal::config('migrate_from_drupal7.settings');
@@ -244,8 +274,13 @@ class ImportNodesForm extends FormBase {
       );
 
       \Drupal::logger('migrate_from_drupal7')->info(
-        'Початок імпорту @count матеріалів типу @type',
-        ['@count' => $context['sandbox']['total'], '@type' => $node_type]
+        'Початок імпорту @count матеріалів типу @type (оригіналів: @originals, перекладів: @translations)',
+        [
+          '@count' => $context['sandbox']['total'],
+          '@type' => $node_type,
+          '@originals' => $context['sandbox']['originals_count'],
+          '@translations' => $context['sandbox']['translations_count'],
+        ]
       );
 
       $log_service->log(
@@ -257,6 +292,8 @@ class ImportNodesForm extends FormBase {
         [
           'node_type' => $node_type,
           'total' => $context['sandbox']['total'],
+          'originals' => $context['sandbox']['originals_count'],
+          'translations' => $context['sandbox']['translations_count'],
           'batch_size' => $batch_size,
         ],
         \Drupal::currentUser()->id()
@@ -503,6 +540,9 @@ class ImportNodesForm extends FormBase {
           ['@tnid' => $tnid]
         );
       }
+
+      // Якщо це переклад і ми не змогли його додати, не створюємо окрему ноду.
+      return ['node' => NULL, 'action' => 'skip'];
     }
 
     // Перевіряємо чи існує маппінг.
