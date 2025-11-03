@@ -404,34 +404,17 @@ class ImportNodesForm extends FormBase {
         }
       }
 
-      // Спочатку спробуємо зберегти ПОРОЖНІЙ переклад, щоб побачити чи проблема в addTranslation() чи в полях.
-      \Drupal::logger('migrate_from_drupal7')->info('Спроба зберегти порожній переклад...');
+      // ВАЖЛИВО: Встановлюємо title ОДРАЗУ, бо це обов'язкове поле.
+      // Без title Drupal не зможе зберегти ноду (Column 'title' cannot be null).
+      $translation->set('title', $node_data['title']);
 
-      try {
-        $translation->save();
-        \Drupal::logger('migrate_from_drupal7')->info('Порожній переклад збережено успішно!');
-      }
-      catch (\Exception $e) {
-        \Drupal::logger('migrate_from_drupal7')->error('Помилка збереження ПОРОЖНЬОГО перекладу: @msg', ['@msg' => $e->getMessage()]);
-        throw $e;
-      }
-
-      // Тепер встановлюємо поля.
-      \Drupal::logger('migrate_from_drupal7')->info('Встановлюємо поля...');
+      // Тепер встановлюємо всі інші поля.
       self::setNodeFields($translation, $node_data, $base_url);
 
-      // Зберігаємо знову з полями.
-      \Drupal::logger('migrate_from_drupal7')->info('Спроба зберегти переклад з полями...');
+      // Зберігаємо переклад лише РАЗ з усіма полями.
+      $translation->save();
 
-      try {
-        $translation->save();
-        \Drupal::logger('migrate_from_drupal7')->info('Переклад @lang з полями збережено успішно!', ['@lang' => $language]);
-      }
-      catch (\Exception $e) {
-        \Drupal::logger('migrate_from_drupal7')->error('Помилка збереження перекладу З ПОЛЯМИ: @msg', ['@msg' => $e->getMessage()]);
-        throw $e;
-      }
-
+      \Drupal::logger('migrate_from_drupal7')->info('Переклад @lang створено', ['@lang' => $language]);
       return ['node' => $translation, 'action' => 'import'];
     }
     catch (\Exception $e) {
