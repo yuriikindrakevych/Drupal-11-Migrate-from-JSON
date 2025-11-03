@@ -713,10 +713,27 @@ class ImportNodesForm extends FormBase {
    *   File entity або NULL.
    */
   protected static function importFile(array $field_value, $field_definition, Node $node, string $base_url): ?File {
-    // Отримуємо URL файлу з Drupal 7.
-    $file_url = $field_value['url'] ?? $field_value['uri'] ?? NULL;
+    if (empty($base_url)) {
+      return NULL;
+    }
 
-    if (empty($file_url) || empty($base_url)) {
+    // Якщо є fid - робимо запит до API за даними файлу.
+    $file_data = NULL;
+    if (!empty($field_value['fid'])) {
+      $api_client = \Drupal::service('migrate_from_drupal7.api_client');
+      $file_data = $api_client->getFileById($field_value['fid']);
+    }
+
+    // Отримуємо URL файлу.
+    $file_url = NULL;
+    if ($file_data) {
+      $file_url = $file_data['url'] ?? $file_data['uri'] ?? NULL;
+    }
+    else {
+      $file_url = $field_value['url'] ?? $field_value['uri'] ?? NULL;
+    }
+
+    if (empty($file_url)) {
       return NULL;
     }
 
