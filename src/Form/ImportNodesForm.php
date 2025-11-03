@@ -10,6 +10,8 @@ use Drupal\migrate_from_drupal7\Service\LogService;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\node\Entity\Node;
+use Drupal\file\Entity\File;
+use GuzzleHttp\ClientInterface;
 
 /**
  * Форма для імпорту матеріалів (nodes) з Drupal 7.
@@ -459,9 +461,17 @@ class ImportNodesForm extends FormBase {
     }
 
     if ($body_data) {
+      $body_value = $body_data['value'] ?? '';
+      $body_format = $body_data['format'] ?? 'full_html';
+
+      // Обробляємо зображення в HTML body.
+      if ($body_format === 'full_html' && !empty($body_value)) {
+        $body_value = self::processImagesInHtml($body_value);
+      }
+
       $values['body'] = [
-        'value' => $body_data['value'] ?? '',
-        'format' => $body_data['format'] ?? 'full_html',
+        'value' => $body_value,
+        'format' => $body_format,
       ];
     }
 
@@ -497,9 +507,17 @@ class ImportNodesForm extends FormBase {
     }
 
     if ($body_data) {
+      $body_value = $body_data['value'] ?? '';
+      $body_format = $body_data['format'] ?? 'full_html';
+
+      // Обробляємо зображення в HTML body.
+      if ($body_format === 'full_html' && !empty($body_value)) {
+        $body_value = self::processImagesInHtml($body_value);
+      }
+
       $node->set('body', [
-        'value' => $body_data['value'] ?? '',
-        'format' => $body_data['format'] ?? 'full_html',
+        'value' => $body_value,
+        'format' => $body_format,
       ]);
     }
 
@@ -572,16 +590,34 @@ class ImportNodesForm extends FormBase {
 
             case 'text_long':
             case 'text_with_summary':
+              $text_value = $field_value['value'] ?? '';
+              $text_format = $field_value['format'] ?? 'full_html';
+
+              // Обробляємо зображення в HTML.
+              if ($text_format === 'full_html' && !empty($text_value)) {
+                $text_value = self::processImagesInHtml($text_value);
+              }
+
               $processed_values[] = [
-                'value' => $field_value['value'] ?? '',
-                'format' => $field_value['format'] ?? 'full_html',
+                'value' => $text_value,
+                'format' => $text_format,
               ];
               break;
 
             case 'image':
             case 'file':
-              // TODO: Імпорт файлів.
-              // Поки що пропускаємо.
+              $file_entity = self::importFile($field_value, $field_definition, $node);
+              if ($file_entity) {
+                $file_data = ['target_id' => $file_entity->id()];
+
+                // Для image додаємо alt та title.
+                if ($field_type === 'image') {
+                  $file_data['alt'] = $field_value['alt'] ?? '';
+                  $file_data['title'] = $field_value['title'] ?? '';
+                }
+
+                $processed_values[] = $file_data;
+              }
               break;
 
             case 'string':
@@ -653,6 +689,184 @@ class ImportNodesForm extends FormBase {
         }
       }
     }
+  }
+
+  /**
+   * Імпортувати файл з Drupal 7.
+   *
+   * @param array $field_value
+   *   Дані поля з Drupal 7.
+   * @param \Drupal\Core\Field\FieldDefinitionInterface $field_definition
+   *   Визначення поля.
+   * @param \Drupal\node\Entity\Node $node
+   *   Node до якого додається файл.
+   *
+   * @return \Drupal\file\Entity\File|null
+   *   File entity або NULL.
+   */
+  protected static function importFile(array $field_value, $field_definition, Node $node): ?File {
+    // Отримуємо URL файлу з Drupal 7.
+    $file_url = $field_value['url'] ?? $field_value['uri'] ?? NULL;
+
+    if (empty($file_url)) {
+      return NULL;
+    }
+
+    // Якщо це відносний шлях, додаємо base URL Drupal 7.
+    if (strpos($file_url, 'http') !== 0) {
+      $config = \Drupal::config('migrate_from_drupal7.settings');
+      $base_url = $config->get('api_url');
+      $file_url = rtrim($base_url, '/') . '/' . ltrim($file_url, '/');
+    }
+
+    // Отримуємо налаштування поля для визначення директорії.
+    $field_settings = $field_definition->getSettings();
+    $uri_scheme = $field_settings['uri_scheme'] ?? 'public';
+    $file_directory = $field_settings['file_directory'] ?? '';
+
+    // Формуємо шлях збереження.
+    $destination_directory = $uri_scheme . '://';
+    if (!empty($file_directory)) {
+      $destination_directory .= $file_directory . '/';
+    }
+
+    // Завантажуємо файл.
+    try {
+      $file_entity = self::downloadFileFromUrl($file_url, $destination_directory);
+
+      if ($file_entity) {
+        $file_entity->setPermanent();
+        $file_entity->save();
+        return $file_entity;
+      }
+    }
+    catch (\Exception $e) {
+      \Drupal::logger('migrate_from_drupal7')->error(
+        'Помилка завантаження файлу @url: @message',
+        ['@url' => $file_url, '@message' => $e->getMessage()]
+      );
+    }
+
+    return NULL;
+  }
+
+  /**
+   * Завантажити файл з URL.
+   *
+   * @param string $url
+   *   URL файлу.
+   * @param string $destination_directory
+   *   Директорія призначення.
+   *
+   * @return \Drupal\file\Entity\File|null
+   *   File entity або NULL.
+   */
+  protected static function downloadFileFromUrl(string $url, string $destination_directory): ?File {
+    try {
+      // Створюємо директорію якщо не існує.
+      $file_system = \Drupal::service('file_system');
+      $file_system->prepareDirectory($destination_directory, \Drupal\Core\File\FileSystemInterface::CREATE_DIRECTORY);
+
+      // Завантажуємо файл через HTTP.
+      $http_client = \Drupal::httpClient();
+      $response = $http_client->get($url);
+
+      if ($response->getStatusCode() !== 200) {
+        return NULL;
+      }
+
+      $file_content = $response->getBody()->getContents();
+
+      // Отримуємо ім'я файлу з URL.
+      $filename = basename(parse_url($url, PHP_URL_PATH));
+
+      // Зберігаємо файл.
+      $destination = $destination_directory . $filename;
+      $file_uri = $file_system->saveData($file_content, $destination, \Drupal\Core\File\FileSystemInterface::EXISTS_RENAME);
+
+      if ($file_uri) {
+        // Створюємо file entity.
+        $file = File::create([
+          'uri' => $file_uri,
+          'status' => 1,
+          'uid' => \Drupal::currentUser()->id(),
+        ]);
+        $file->save();
+
+        return $file;
+      }
+    }
+    catch (\Exception $e) {
+      \Drupal::logger('migrate_from_drupal7')->error(
+        'Помилка завантаження файлу з URL @url: @message',
+        ['@url' => $url, '@message' => $e->getMessage()]
+      );
+    }
+
+    return NULL;
+  }
+
+  /**
+   * Обробити зображення в HTML тексті.
+   *
+   * @param string $html
+   *   HTML текст.
+   *
+   * @return string
+   *   Оброблений HTML текст.
+   */
+  protected static function processImagesInHtml(string $html): string {
+    if (empty($html)) {
+      return $html;
+    }
+
+    // Знаходимо всі <img> теги.
+    $pattern = '/<img[^>]+src=["\']([^"\']+)["\'][^>]*>/i';
+
+    preg_match_all($pattern, $html, $matches);
+
+    if (empty($matches[0])) {
+      return $html;
+    }
+
+    $config = \Drupal::config('migrate_from_drupal7.settings');
+    $base_url = $config->get('api_url');
+
+    foreach ($matches[1] as $index => $img_src) {
+      // Пропускаємо зовнішні URL (не з Drupal 7).
+      if (strpos($img_src, 'http') === 0 && strpos($img_src, $base_url) === FALSE) {
+        continue;
+      }
+
+      // Формуємо повний URL.
+      if (strpos($img_src, 'http') !== 0) {
+        $full_url = rtrim($base_url, '/') . '/' . ltrim($img_src, '/');
+      }
+      else {
+        $full_url = $img_src;
+      }
+
+      // Завантажуємо зображення.
+      try {
+        $file_entity = self::downloadFileFromUrl($full_url, 'public://inline-images/');
+
+        if ($file_entity) {
+          // Отримуємо новий URL.
+          $new_url = \Drupal::service('file_url_generator')->generateAbsoluteString($file_entity->getFileUri());
+
+          // Замінюємо старий src на новий.
+          $html = str_replace($img_src, $new_url, $html);
+        }
+      }
+      catch (\Exception $e) {
+        \Drupal::logger('migrate_from_drupal7')->warning(
+          'Не вдалося завантажити зображення з HTML: @url',
+          ['@url' => $full_url]
+        );
+      }
+    }
+
+    return $html;
   }
 
   /**
