@@ -214,7 +214,7 @@ class ImportNodesForm extends FormBase {
   }
 
   /**
-   * Імпорт однієї ноди - ТІЛЬКИ TITLE.
+   * Імпорт однієї ноди - title + body.
    */
   protected static function importSingleNode(array $node_data): array {
     $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
@@ -225,6 +225,18 @@ class ImportNodesForm extends FormBase {
     $title = $node_data['title'];
     $changed = (int) ($node_data['changed'] ?? time());
     $is_translation = !empty($tnid) && $tnid != $nid && $tnid != '0';
+
+    // Обробка поля body.
+    $body_value = '';
+    $body_summary = '';
+    $body_format = 'full_html';
+
+    if (!empty($node_data['fields']['body'][0])) {
+      $body_data = $node_data['fields']['body'][0];
+      $body_value = $body_data['value'] ?? '';
+      $body_summary = $body_data['summary'] ?? '';
+      $body_format = $body_data['format'] ?? 'full_html';
+    }
 
     \Drupal::logger('migrate_from_drupal7')->info(
       'Імпорт: nid=@nid, lang=@lang, is_trans=@trans, title=@title, changed=@changed',
@@ -266,6 +278,13 @@ class ImportNodesForm extends FormBase {
         if ($changed > $existing_changed) {
           // Потрібно оновити переклад.
           $translation->set('title', $title);
+          if ($translation->hasField('body')) {
+            $translation->set('body', [
+              'value' => $body_value,
+              'summary' => $body_summary,
+              'format' => $body_format,
+            ]);
+          }
           $translation->set('changed', $changed);
           $translation->save();
           \Drupal::logger('migrate_from_drupal7')->info('Переклад оновлено: @lang (changed: @old → @new)', [
@@ -295,6 +314,13 @@ class ImportNodesForm extends FormBase {
       // Переклад не існує - створюємо.
       $translation = $original->addTranslation($language);
       $translation->set('title', $title);
+      if ($translation->hasField('body')) {
+        $translation->set('body', [
+          'value' => $body_value,
+          'summary' => $body_summary,
+          'format' => $body_format,
+        ]);
+      }
       $translation->set('changed', $changed);
       $translation->set('default_langcode', 0);
       $translation->save();
@@ -322,6 +348,13 @@ class ImportNodesForm extends FormBase {
           if ($changed > $existing_changed) {
             // Потрібно оновити.
             $node->set('title', $title);
+            if ($node->hasField('body')) {
+              $node->set('body', [
+                'value' => $body_value,
+                'summary' => $body_summary,
+                'format' => $body_format,
+              ]);
+            }
             $node->set('changed', $changed);
             $node->save();
             \Drupal::logger('migrate_from_drupal7')->info('Оновлено: nid=@nid (changed: @old → @new)', [
@@ -355,7 +388,7 @@ class ImportNodesForm extends FormBase {
       }
 
       // Створюємо нову ноду.
-      $node = Node::create([
+      $node_values = [
         'type' => $node_type,
         'title' => $title,
         'langcode' => $language,
@@ -363,7 +396,18 @@ class ImportNodesForm extends FormBase {
         'status' => 1,
         'created' => $changed,
         'changed' => $changed,
-      ]);
+      ];
+
+      // Додаємо body якщо є.
+      if (!empty($body_value)) {
+        $node_values['body'] = [
+          'value' => $body_value,
+          'summary' => $body_summary,
+          'format' => $body_format,
+        ];
+      }
+
+      $node = Node::create($node_values);
       $node->save();
       \Drupal::logger('migrate_from_drupal7')->info('Створено: nid=@nid', ['@nid' => $node->id()]);
       return [
