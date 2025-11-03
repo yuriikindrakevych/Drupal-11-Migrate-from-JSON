@@ -214,7 +214,7 @@ class ImportNodesForm extends FormBase {
   }
 
   /**
-   * Імпорт однієї ноди - title + body.
+   * Імпорт однієї ноди - ТІЛЬКИ TITLE (body буде додано пізніше).
    */
   protected static function importSingleNode(array $node_data): array {
     $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
@@ -225,19 +225,6 @@ class ImportNodesForm extends FormBase {
     $title = $node_data['title'];
     $changed = (int) ($node_data['changed'] ?? time());
     $is_translation = !empty($tnid) && $tnid != $nid && $tnid != '0';
-
-    // Обробка поля body.
-    $body_value = '';
-    $body_summary = '';
-    $body_format = 'plain_text';
-
-    if (!empty($node_data['fields']['body'][0]['value'])) {
-      $body_data = $node_data['fields']['body'][0];
-      $body_value = $body_data['value'] ?? '';
-      $body_summary = $body_data['summary'] ?? '';
-      // Якщо format = null або порожній, використовуємо plain_text.
-      $body_format = !empty($body_data['format']) ? $body_data['format'] : 'plain_text';
-    }
 
     \Drupal::logger('migrate_from_drupal7')->info(
       'Імпорт: nid=@nid, lang=@lang, is_trans=@trans, title=@title, changed=@changed',
@@ -278,20 +265,9 @@ class ImportNodesForm extends FormBase {
 
         if ($changed > $existing_changed) {
           // Потрібно оновити переклад.
-          $translation->setTitle($title);
-          if ($translation->hasField('body')) {
-            $translation->set('body', [
-              'value' => $body_value,
-              'summary' => $body_summary,
-              'format' => $body_format,
-            ]);
-          }
+          $translation->set('title', $title);
+          $translation->set('changed', $changed);
           $translation->save();
-          // Встановлюємо changed після збереження.
-          if (method_exists($translation, 'setChangedTime')) {
-            $translation->setChangedTime($changed);
-            $translation->save();
-          }
           \Drupal::logger('migrate_from_drupal7')->info('Переклад оновлено: @lang (changed: @old → @new)', [
             '@lang' => $language,
             '@old' => date('Y-m-d H:i:s', $existing_changed),
@@ -318,42 +294,10 @@ class ImportNodesForm extends FormBase {
 
       // Переклад не існує - створюємо.
       $translation = $original->addTranslation($language);
-
-      // Спочатку копіюємо всі поля з оригіналу (як в TranslationExample.php).
-      foreach ($original->getFieldDefinitions() as $field_name => $field_definition) {
-        // Пропускаємо системні поля та поля які ми перекладаємо.
-        if (in_array($field_name, [
-          'nid', 'uuid', 'vid', 'langcode', 'default_langcode',
-          'content_translation_source', 'content_translation_outdated',
-          'revision_translation_affected', 'revision_default',
-          'title', 'body', 'changed'
-        ])) {
-          continue;
-        }
-
-        if ($original->hasField($field_name) && !$original->get($field_name)->isEmpty()) {
-          $translation->set($field_name, $original->get($field_name)->getValue());
-        }
-      }
-
-      // Потім встановлюємо наші перекладені поля.
-      $translation->setTitle($title);
-      if ($translation->hasField('body')) {
-        $translation->set('body', [
-          'value' => $body_value,
-          'summary' => $body_summary,
-          'format' => $body_format,
-        ]);
-      }
-      $translation->setPublished($original->isPublished());
+      $translation->set('title', $title);
+      $translation->set('changed', $changed);
       $translation->set('default_langcode', 0);
       $translation->save();
-
-      // Встановлюємо changed після збереження.
-      if (method_exists($translation, 'setChangedTime')) {
-        $translation->setChangedTime($changed);
-        $translation->save();
-      }
 
       \Drupal::logger('migrate_from_drupal7')->info('Переклад створено: @lang', ['@lang' => $language]);
       return [
@@ -377,20 +321,9 @@ class ImportNodesForm extends FormBase {
 
           if ($changed > $existing_changed) {
             // Потрібно оновити.
-            $node->setTitle($title);
-            if ($node->hasField('body')) {
-              $node->set('body', [
-                'value' => $body_value,
-                'summary' => $body_summary,
-                'format' => $body_format,
-              ]);
-            }
+            $node->set('title', $title);
+            $node->set('changed', $changed);
             $node->save();
-            // Встановлюємо changed після збереження.
-            if (method_exists($node, 'setChangedTime')) {
-              $node->setChangedTime($changed);
-              $node->save();
-            }
             \Drupal::logger('migrate_from_drupal7')->info('Оновлено: nid=@nid (changed: @old → @new)', [
               '@nid' => $existing_nid,
               '@old' => date('Y-m-d H:i:s', $existing_changed),
@@ -421,35 +354,17 @@ class ImportNodesForm extends FormBase {
         }
       }
 
-      // Створюємо нову ноду - тільки тип і мова.
+      // Створюємо нову ноду.
       $node = Node::create([
         'type' => $node_type,
+        'title' => $title,
         'langcode' => $language,
+        'uid' => 1,
+        'status' => 1,
+        'created' => $changed,
+        'changed' => $changed,
       ]);
-
-      // Встановлюємо поля через методи.
-      $node->setTitle($title);
-      $node->setOwnerId(1);
-      $node->setPublished(TRUE);
-      $node->setCreatedTime($changed);
-
-      // Додаємо body якщо є.
-      if (!empty($body_value) && $node->hasField('body')) {
-        $node->set('body', [
-          'value' => $body_value,
-          'summary' => $body_summary,
-          'format' => $body_format,
-        ]);
-      }
-
-      // Зберігаємо.
       $node->save();
-
-      // Встановлюємо changed після збереження.
-      if (method_exists($node, 'setChangedTime')) {
-        $node->setChangedTime($changed);
-        $node->save();
-      }
       \Drupal::logger('migrate_from_drupal7')->info('Створено: nid=@nid', ['@nid' => $node->id()]);
       return [
         'success' => TRUE,
