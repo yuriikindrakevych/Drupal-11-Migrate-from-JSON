@@ -313,6 +313,25 @@ class ImportNodesForm extends FormBase {
 
       // Переклад не існує - створюємо.
       $translation = $original->addTranslation($language);
+
+      // Спочатку копіюємо всі поля з оригіналу (як в TranslationExample.php).
+      foreach ($original->getFieldDefinitions() as $field_name => $field_definition) {
+        // Пропускаємо системні поля та поля які ми перекладаємо.
+        if (in_array($field_name, [
+          'nid', 'uuid', 'vid', 'langcode', 'default_langcode',
+          'content_translation_source', 'content_translation_outdated',
+          'revision_translation_affected', 'revision_default',
+          'title', 'body', 'changed'
+        ])) {
+          continue;
+        }
+
+        if ($original->hasField($field_name) && !$original->get($field_name)->isEmpty()) {
+          $translation->set($field_name, $original->get($field_name)->getValue());
+        }
+      }
+
+      // Потім встановлюємо наші перекладені поля.
       $translation->set('title', $title);
       if ($translation->hasField('body')) {
         $translation->set('body', [
@@ -322,6 +341,7 @@ class ImportNodesForm extends FormBase {
         ]);
       }
       $translation->set('changed', $changed);
+      $translation->set('status', $original->isPublished() ? 1 : 0);
       $translation->set('default_langcode', 0);
       $translation->save();
 
