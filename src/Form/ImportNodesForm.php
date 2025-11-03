@@ -191,15 +191,17 @@ class ImportNodesForm extends FormBase {
     $node_type = $node_data['type'];
     $language = $node_data['language'] ?? 'uk';
     $title = $node_data['title'];
+    $changed = (int) ($node_data['changed'] ?? time());
     $is_translation = !empty($tnid) && $tnid != $nid && $tnid != '0';
 
     \Drupal::logger('migrate_from_drupal7')->info(
-      'Імпорт: nid=@nid, lang=@lang, is_trans=@trans, title=@title',
+      'Імпорт: nid=@nid, lang=@lang, is_trans=@trans, title=@title, changed=@changed',
       [
         '@nid' => $nid,
         '@lang' => $language,
         '@trans' => $is_translation ? 'ТАК' : 'НІ',
         '@title' => $title,
+        '@changed' => date('Y-m-d H:i:s', $changed),
       ]
     );
 
@@ -214,13 +216,38 @@ class ImportNodesForm extends FormBase {
 
       $original = Node::load($original_new_nid);
 
-      if (!$original || $original->hasTranslation($language)) {
+      if (!$original) {
         return ['success' => FALSE];
       }
 
-      // Створюємо переклад - ТІЛЬКИ TITLE.
+      if ($original->hasTranslation($language)) {
+        // Переклад існує - перевіряємо чи потрібно оновити.
+        $translation = $original->getTranslation($language);
+        $existing_changed = $translation->getChangedTime();
+
+        if ($changed > $existing_changed) {
+          // Потрібно оновити переклад.
+          $translation->set('title', $title);
+          $translation->set('changed', $changed);
+          $translation->save();
+          \Drupal::logger('migrate_from_drupal7')->info('Переклад оновлено: @lang (changed: @old → @new)', [
+            '@lang' => $language,
+            '@old' => date('Y-m-d H:i:s', $existing_changed),
+            '@new' => date('Y-m-d H:i:s', $changed),
+          ]);
+          return ['success' => TRUE, 'nid' => $original_new_nid];
+        }
+        else {
+          // Переклад актуальний - пропускаємо.
+          \Drupal::logger('migrate_from_drupal7')->info('Переклад актуальний, пропускаємо: @lang', ['@lang' => $language]);
+          return ['success' => TRUE, 'nid' => $original_new_nid];
+        }
+      }
+
+      // Переклад не існує - створюємо.
       $translation = $original->addTranslation($language);
       $translation->set('title', $title);
+      $translation->set('changed', $changed);
       $translation->set('default_langcode', 0);
       $translation->save();
 
@@ -236,11 +263,26 @@ class ImportNodesForm extends FormBase {
         $node = Node::load($existing_nid);
 
         if ($node) {
-          // Нода існує - оновлюємо.
-          $node->set('title', $title);
-          $node->save();
-          \Drupal::logger('migrate_from_drupal7')->info('Оновлено: nid=@nid', ['@nid' => $existing_nid]);
-          return ['success' => TRUE, 'nid' => $existing_nid];
+          // Нода існує - перевіряємо чи потрібно оновити.
+          $existing_changed = $node->getChangedTime();
+
+          if ($changed > $existing_changed) {
+            // Потрібно оновити.
+            $node->set('title', $title);
+            $node->set('changed', $changed);
+            $node->save();
+            \Drupal::logger('migrate_from_drupal7')->info('Оновлено: nid=@nid (changed: @old → @new)', [
+              '@nid' => $existing_nid,
+              '@old' => date('Y-m-d H:i:s', $existing_changed),
+              '@new' => date('Y-m-d H:i:s', $changed),
+            ]);
+            return ['success' => TRUE, 'nid' => $existing_nid];
+          }
+          else {
+            // Нода актуальна - пропускаємо.
+            \Drupal::logger('migrate_from_drupal7')->info('Нода актуальна, пропускаємо: nid=@nid', ['@nid' => $existing_nid]);
+            return ['success' => TRUE, 'nid' => $existing_nid];
+          }
         }
         else {
           // Нода не існує (видалена) - видаляємо маппінг і створюємо нову.
@@ -256,6 +298,8 @@ class ImportNodesForm extends FormBase {
         'langcode' => $language,
         'uid' => 1,
         'status' => 1,
+        'created' => $changed,
+        'changed' => $changed,
       ]);
       $node->save();
       \Drupal::logger('migrate_from_drupal7')->info('Створено: nid=@nid', ['@nid' => $node->id()]);
