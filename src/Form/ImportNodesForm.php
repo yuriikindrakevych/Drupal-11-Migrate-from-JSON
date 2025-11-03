@@ -404,13 +404,34 @@ class ImportNodesForm extends FormBase {
         }
       }
 
-      // Встановлюємо ВСІ поля з JSON.
+      // Спочатку спробуємо зберегти ПОРОЖНІЙ переклад, щоб побачити чи проблема в addTranslation() чи в полях.
+      \Drupal::logger('migrate_from_drupal7')->info('Спроба зберегти порожній переклад...');
+
+      try {
+        $translation->save();
+        \Drupal::logger('migrate_from_drupal7')->info('Порожній переклад збережено успішно!');
+      }
+      catch (\Exception $e) {
+        \Drupal::logger('migrate_from_drupal7')->error('Помилка збереження ПОРОЖНЬОГО перекладу: @msg', ['@msg' => $e->getMessage()]);
+        throw $e;
+      }
+
+      // Тепер встановлюємо поля.
+      \Drupal::logger('migrate_from_drupal7')->info('Встановлюємо поля...');
       self::setNodeFields($translation, $node_data, $base_url);
 
-      // Зберігаємо.
-      $translation->save();
+      // Зберігаємо знову з полями.
+      \Drupal::logger('migrate_from_drupal7')->info('Спроба зберегти переклад з полями...');
 
-      \Drupal::logger('migrate_from_drupal7')->info('Переклад @lang створено', ['@lang' => $language]);
+      try {
+        $translation->save();
+        \Drupal::logger('migrate_from_drupal7')->info('Переклад @lang з полями збережено успішно!', ['@lang' => $language]);
+      }
+      catch (\Exception $e) {
+        \Drupal::logger('migrate_from_drupal7')->error('Помилка збереження перекладу З ПОЛЯМИ: @msg', ['@msg' => $e->getMessage()]);
+        throw $e;
+      }
+
       return ['node' => $translation, 'action' => 'import'];
     }
     catch (\Exception $e) {
@@ -437,10 +458,15 @@ class ImportNodesForm extends FormBase {
     // Body.
     if (!empty($node_data['fields']['body'][0])) {
       $body = $node_data['fields']['body'][0];
-      $node->set('body', [
-        'value' => $body['value'] ?? '',
-        'format' => $body['format'] ?? 'full_html',
-      ]);
+      try {
+        $node->set('body', [
+          'value' => $body['value'] ?? '',
+          'format' => $body['format'] ?? 'full_html',
+        ]);
+      }
+      catch (\Exception $e) {
+        \Drupal::logger('migrate_from_drupal7')->error('Помилка встановлення body: @msg', ['@msg' => $e->getMessage()]);
+      }
     }
 
     // Інші поля.
@@ -453,47 +479,56 @@ class ImportNodesForm extends FormBase {
           continue;
         }
 
-        $field_definition = $node->getFieldDefinition($field_name);
-        $field_type = $field_definition->getType();
+        try {
+          $field_definition = $node->getFieldDefinition($field_name);
+          $field_type = $field_definition->getType();
 
-        $processed_values = [];
+          $processed_values = [];
 
-        foreach ($field_values as $field_value) {
-          if (!is_array($field_value)) {
-            continue;
+          foreach ($field_values as $field_value) {
+            if (!is_array($field_value)) {
+              continue;
+            }
+
+            switch ($field_type) {
+              case 'image':
+              case 'file':
+                $file_entity = self::importFile($field_value, $field_definition, $node, $base_url);
+                if ($file_entity) {
+                  $file_data = ['target_id' => $file_entity->id()];
+                  if ($field_type === 'image') {
+                    $file_data['alt'] = $field_value['alt'] ?? '';
+                    $file_data['title'] = $field_value['title'] ?? '';
+                  }
+                  $processed_values[] = $file_data;
+                }
+                break;
+
+              case 'entity_reference':
+                if (!empty($field_value['tid'])) {
+                  // Для таксономії потрібен маппінг, але зараз просто пропускаємо.
+                  // TODO: Додати маппінг таксономії.
+                }
+                break;
+
+              default:
+                if (isset($field_value['value'])) {
+                  $processed_values[] = ['value' => $field_value['value']];
+                }
+                break;
+            }
           }
 
-          switch ($field_type) {
-            case 'image':
-            case 'file':
-              $file_entity = self::importFile($field_value, $field_definition, $node, $base_url);
-              if ($file_entity) {
-                $file_data = ['target_id' => $file_entity->id()];
-                if ($field_type === 'image') {
-                  $file_data['alt'] = $field_value['alt'] ?? '';
-                  $file_data['title'] = $field_value['title'] ?? '';
-                }
-                $processed_values[] = $file_data;
-              }
-              break;
-
-            case 'entity_reference':
-              if (!empty($field_value['tid'])) {
-                // Для таксономії потрібен маппінг, але зараз просто пропускаємо.
-                // TODO: Додати маппінг таксономії.
-              }
-              break;
-
-            default:
-              if (isset($field_value['value'])) {
-                $processed_values[] = ['value' => $field_value['value']];
-              }
-              break;
+          if (!empty($processed_values)) {
+            $node->set($field_name, $processed_values);
+            \Drupal::logger('migrate_from_drupal7')->info('Встановлено поле @field', ['@field' => $field_name]);
           }
         }
-
-        if (!empty($processed_values)) {
-          $node->set($field_name, $processed_values);
+        catch (\Exception $e) {
+          \Drupal::logger('migrate_from_drupal7')->error(
+            'Помилка встановлення поля @field: @msg',
+            ['@field' => $field_name, '@msg' => $e->getMessage()]
+          );
         }
       }
     }
