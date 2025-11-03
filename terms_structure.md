@@ -1,10 +1,4 @@
 {
-"vocabulary": {
-"vid": "1",
-"name": "Категорії",
-"machine_name": "category",
-"description": "Категорії викрійок"
-},
 "terms": [
 {
 "tid": "1",

@@ -235,7 +235,18 @@ class ImportNodesForm extends FormBase {
 
         if (!empty($node_full_data)) {
           $tnid = $node_full_data['tnid'] ?? $nid;
+          $language = $node_full_data['language'] ?? 'uk';
           $is_translation = !empty($tnid) && $tnid != $nid && $tnid != '0';
+
+          \Drupal::logger('migrate_from_drupal7')->info(
+            'Аналіз ноди: nid=@nid, tnid=@tnid, lang=@lang, is_translation=@trans',
+            [
+              '@nid' => $nid,
+              '@tnid' => $tnid,
+              '@lang' => $language,
+              '@trans' => $is_translation ? 'ТАК' : 'НІ',
+            ]
+          );
 
           if ($is_translation) {
             $translations[] = $node_preview;
@@ -263,6 +274,17 @@ class ImportNodesForm extends FormBase {
       $context['sandbox']['errors'] = 0;
       $context['sandbox']['originals_count'] = count($originals);
       $context['sandbox']['translations_count'] = count($translations);
+
+      // Логуємо порядок обробки для діагностики.
+      $ordered_nids = array_map(function($n) { return $n['nid']; }, $context['sandbox']['all_nodes']);
+      \Drupal::logger('migrate_from_drupal7')->info(
+        'Порядок обробки нод: @nids (оригіналів: @orig, перекладів: @trans)',
+        [
+          '@nids' => implode(', ', $ordered_nids),
+          '@orig' => count($originals),
+          '@trans' => count($translations),
+        ]
+      );
 
       // Зберігаємо base_url для використання в файлових операціях.
       $config = \Drupal::config('migrate_from_drupal7.settings');
@@ -463,6 +485,15 @@ class ImportNodesForm extends FormBase {
 
       if ($original_new_nid) {
         $original_node = Node::load($original_new_nid);
+
+        \Drupal::logger('migrate_from_drupal7')->info(
+          'Завантажено оригінал: node_loaded=@loaded, has_translation(@lang)=@has_trans',
+          [
+            '@loaded' => $original_node ? 'ТАК' : 'НІ',
+            '@lang' => $language,
+            '@has_trans' => ($original_node && $original_node->hasTranslation($language)) ? 'ТАК' : 'НІ',
+          ]
+        );
 
         if ($original_node && !$original_node->hasTranslation($language)) {
           // Додаємо переклад до оригінальної ноди.
