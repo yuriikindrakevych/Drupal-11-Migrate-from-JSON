@@ -10,16 +10,9 @@ use Drupal\migrate_from_drupal7\Service\LogService;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\node\Entity\Node;
-use Drupal\file\Entity\File;
 
 /**
- * Форма для імпорту матеріалів (nodes) з Drupal 7.
- *
- * Простий підхід:
- * 1. Завантажуємо всі ноди з API
- * 2. Розділяємо на оригінали (tnid == nid) та переклади (tnid != nid)
- * 3. Імпортуємо спочатку всі оригінали
- * 4. Потім імпортуємо всі переклади
+ * Мінімальна форма для імпорту матеріалів - ТІЛЬКИ TITLE.
  */
 class ImportNodesForm extends FormBase {
 
@@ -66,40 +59,23 @@ class ImportNodesForm extends FormBase {
     }
 
     $form['info'] = [
-      '#markup' => '<p>' . $this->t('Імпорт матеріалів: спочатку оригінали, потім переклади.') . '</p>',
+      '#markup' => '<p>' . $this->t('Мінімальний імпорт: тільки title + переклади.') . '</p>',
     ];
 
     $form['node_types'] = [
       '#type' => 'checkboxes',
-      '#title' => $this->t('Типи матеріалів для імпорту'),
+      '#title' => $this->t('Типи матеріалів'),
       '#options' => [],
-      '#description' => $this->t('Виберіть типи матеріалів.'),
       '#required' => TRUE,
     ];
 
     foreach ($node_types as $node_type) {
-      $form['node_types']['#options'][$node_type->id()] = $node_type->label() . ' (' . $node_type->id() . ')';
+      $form['node_types']['#options'][$node_type->id()] = $node_type->label();
     }
-
-    $form['batch_size'] = [
-      '#type' => 'select',
-      '#title' => $this->t('Розмір порції'),
-      '#options' => [
-        10 => '10',
-        25 => '25',
-        50 => '50',
-        100 => '100',
-      ],
-      '#default_value' => 50,
-    ];
-
-    $form['actions'] = [
-      '#type' => 'actions',
-    ];
 
     $form['actions']['submit'] = [
       '#type' => 'submit',
-      '#value' => $this->t('Розпочати імпорт'),
+      '#value' => $this->t('Імпорт'),
     ];
 
     return $form;
@@ -107,24 +83,17 @@ class ImportNodesForm extends FormBase {
 
   public function submitForm(array &$form, FormStateInterface $form_state) {
     $node_types = array_filter($form_state->getValue('node_types'));
-    $batch_size = (int) $form_state->getValue('batch_size');
-
-    if (empty($node_types)) {
-      $this->messenger()->addError($this->t('Виберіть хоча б один тип матеріалу.'));
-      return;
-    }
 
     $batch = [
-      'title' => $this->t('Імпорт матеріалів'),
+      'title' => $this->t('Імпорт'),
       'operations' => [],
       'finished' => [$this, 'batchFinished'],
-      'progressive' => TRUE,
     ];
 
     foreach ($node_types as $node_type) {
       $batch['operations'][] = [
-        [self::class, 'batchImportNodes'],
-        [$node_type, $batch_size],
+        [self::class, 'batchImport'],
+        [$node_type],
       ];
     }
 
@@ -132,22 +101,18 @@ class ImportNodesForm extends FormBase {
   }
 
   /**
-   * Batch операція: імпорт матеріалів.
+   * Batch імпорт.
    */
-  public static function batchImportNodes($node_type, $batch_size, array &$context) {
+  public static function batchImport($node_type, array &$context) {
     $api_client = \Drupal::service('migrate_from_drupal7.api_client');
     $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
-    $log_service = \Drupal::service('migrate_from_drupal7.log');
 
-    // Ініціалізація.
     if (!isset($context['sandbox']['progress'])) {
       // Завантажуємо всі ноди.
-      $all_nodes_data = $api_client->getNodes($node_type, 9999, 0);
+      $all_nodes = $api_client->getNodes($node_type, 9999, 0);
 
-      if (empty($all_nodes_data) || !is_array($all_nodes_data)) {
-        $context['results']['errors'][$node_type] = 1;
+      if (empty($all_nodes)) {
         $context['finished'] = 1;
-        $log_service->logError('import', 'node', "Не вдалося отримати матеріали типу $node_type");
         return;
       }
 
@@ -155,132 +120,86 @@ class ImportNodesForm extends FormBase {
       $originals = [];
       $translations = [];
 
-      foreach ($all_nodes_data as $node_preview) {
+      foreach ($all_nodes as $node_preview) {
         $nid = $node_preview['nid'];
-        $node_full = $api_client->getNodeById($nid);
+        $node_data = $api_client->getNodeById($nid);
 
-        if (!$node_full) {
+        if (!$node_data) {
           continue;
         }
 
-        $tnid = $node_full['tnid'] ?? $nid;
+        $tnid = $node_data['tnid'] ?? $nid;
         $is_translation = !empty($tnid) && $tnid != $nid && $tnid != '0';
 
         if ($is_translation) {
-          $translations[] = $node_full;
+          $translations[] = $node_data;
         }
         else {
-          $originals[] = $node_full;
+          $originals[] = $node_data;
         }
       }
 
-      // Зберігаємо в sandbox: спочатку оригінали, потім переклади.
+      // Спочатку оригінали, потім переклади.
       $context['sandbox']['all_nodes'] = array_merge($originals, $translations);
       $context['sandbox']['total'] = count($context['sandbox']['all_nodes']);
       $context['sandbox']['progress'] = 0;
-      $context['sandbox']['node_type'] = $node_type;
       $context['sandbox']['imported'] = 0;
-      $context['sandbox']['updated'] = 0;
-      $context['sandbox']['skipped'] = 0;
       $context['sandbox']['errors'] = 0;
-
-      $config = \Drupal::config('migrate_from_drupal7.settings');
-      $context['sandbox']['base_url'] = $config->get('base_url') ?? '';
-
-      \Drupal::logger('migrate_from_drupal7')->info(
-        'Початок імпорту: @total нод (@orig оригіналів, @trans перекладів)',
-        [
-          '@total' => $context['sandbox']['total'],
-          '@orig' => count($originals),
-          '@trans' => count($translations),
-        ]
-      );
     }
 
-    // Обробляємо порцію.
-    $nodes_to_process = array_slice(
+    // Обробляємо по 10 за раз.
+    $batch_size = 10;
+    $nodes = array_slice(
       $context['sandbox']['all_nodes'],
       $context['sandbox']['progress'],
       $batch_size
     );
 
-    if (empty($nodes_to_process)) {
-      $context['results']['imported'][$node_type] = $context['sandbox']['imported'];
-      $context['results']['updated'][$node_type] = $context['sandbox']['updated'];
-      $context['results']['skipped'][$node_type] = $context['sandbox']['skipped'];
-      $context['results']['errors'][$node_type] = $context['sandbox']['errors'];
-      $context['finished'] = 1;
-      return;
-    }
-
-    foreach ($nodes_to_process as $node_data) {
+    foreach ($nodes as $node_data) {
       try {
-        $result = self::importNode($node_data, $context['sandbox']['base_url']);
-
-        if ($result['action'] === 'import') {
+        $result = self::importSingleNode($node_data);
+        if ($result['success']) {
           $context['sandbox']['imported']++;
+          $mapping_service->saveMapping('node', $node_data['nid'], $result['nid'], $node_type);
         }
-        elseif ($result['action'] === 'update') {
-          $context['sandbox']['updated']++;
-        }
-        elseif ($result['action'] === 'skip') {
-          $context['sandbox']['skipped']++;
-        }
-
-        if ($result['node']) {
-          $mapping_service->saveMapping('node', $node_data['nid'], $result['node']->id(), $node_type);
+        else {
+          $context['sandbox']['errors']++;
         }
       }
       catch (\Exception $e) {
         $context['sandbox']['errors']++;
-        \Drupal::logger('migrate_from_drupal7')->error(
-          'Помилка імпорту node @nid: @message',
-          ['@nid' => $node_data['nid'], '@message' => $e->getMessage()]
-        );
+        \Drupal::logger('migrate_from_drupal7')->error('Помилка: @msg', ['@msg' => $e->getMessage()]);
       }
 
       $context['sandbox']['progress']++;
     }
 
     $context['finished'] = $context['sandbox']['progress'] / $context['sandbox']['total'];
-    $context['message'] = t(
-      '@type: @current/@total (імпорт: @import, оновлено: @update, пропущено: @skip)',
-      [
-        '@type' => $node_type,
-        '@current' => $context['sandbox']['progress'],
-        '@total' => $context['sandbox']['total'],
-        '@import' => $context['sandbox']['imported'],
-        '@update' => $context['sandbox']['updated'],
-        '@skip' => $context['sandbox']['skipped'],
-      ]
-    );
-
-    if ($context['finished'] >= 1) {
-      $context['results']['imported'][$node_type] = $context['sandbox']['imported'];
-      $context['results']['updated'][$node_type] = $context['sandbox']['updated'];
-      $context['results']['skipped'][$node_type] = $context['sandbox']['skipped'];
-      $context['results']['errors'][$node_type] = $context['sandbox']['errors'];
-    }
+    $context['message'] = t('Оброблено @current з @total', [
+      '@current' => $context['sandbox']['progress'],
+      '@total' => $context['sandbox']['total'],
+    ]);
   }
 
   /**
-   * Імпортувати одну ноду (оригінал або переклад).
+   * Імпорт однієї ноди - ТІЛЬКИ TITLE.
    */
-  protected static function importNode(array $node_data, string $base_url): array {
+  protected static function importSingleNode(array $node_data): array {
     $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
     $nid = $node_data['nid'];
     $tnid = $node_data['tnid'] ?? $nid;
     $node_type = $node_data['type'];
     $language = $node_data['language'] ?? 'uk';
+    $title = $node_data['title'];
     $is_translation = !empty($tnid) && $tnid != $nid && $tnid != '0';
 
     \Drupal::logger('migrate_from_drupal7')->info(
-      'Імпорт: nid=@nid, tnid=@tnid, lang=@lang, is_trans=@trans',
+      'Імпорт: nid=@nid, lang=@lang, is_trans=@trans, title=@title',
       [
         '@nid' => $nid,
-        '@tnid' => $tnid,
         '@lang' => $language,
         '@trans' => $is_translation ? 'ТАК' : 'НІ',
+        '@title' => $title,
       ]
     );
 
@@ -290,334 +209,61 @@ class ImportNodesForm extends FormBase {
 
       if (!$original_new_nid) {
         \Drupal::logger('migrate_from_drupal7')->warning('Оригінал не знайдено для tnid=@tnid', ['@tnid' => $tnid]);
-        return ['node' => NULL, 'action' => 'skip'];
+        return ['success' => FALSE];
       }
 
-      $original_node = Node::load($original_new_nid);
+      $original = Node::load($original_new_nid);
 
-      if (!$original_node || $original_node->hasTranslation($language)) {
-        \Drupal::logger('migrate_from_drupal7')->warning('Оригінал не завантажено або переклад існує');
-        return ['node' => NULL, 'action' => 'skip'];
+      if (!$original || $original->hasTranslation($language)) {
+        return ['success' => FALSE];
       }
 
-      // Створюємо переклад (без очищення полів оригіналу).
-      return self::createTranslation($original_node, $node_data, $base_url);
+      // Створюємо переклад - ТІЛЬКИ TITLE.
+      $translation = $original->addTranslation($language);
+      $translation->set('title', $title);
+      $translation->set('default_langcode', 0);
+      $translation->save();
+
+      \Drupal::logger('migrate_from_drupal7')->info('Переклад створено: @lang', ['@lang' => $language]);
+      return ['success' => TRUE, 'nid' => $original_new_nid];
     }
     else {
       // Це оригінал.
-      return self::createOrUpdateOriginal($node_data, $base_url);
-    }
-  }
+      $existing_nid = $mapping_service->getNewId('node', $nid, $node_type);
 
-  /**
-   * Створити або оновити оригінальну ноду.
-   */
-  protected static function createOrUpdateOriginal(array $node_data, string $base_url): array {
-    $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
-    $nid = $node_data['nid'];
-    $node_type = $node_data['type'];
-
-    // Перевіряємо чи існує.
-    $existing_nid = $mapping_service->getNewId('node', $nid, $node_type);
-    $node = $existing_nid ? Node::load($existing_nid) : NULL;
-
-    if ($node) {
-      // Оновлюємо.
-      self::setNodeFields($node, $node_data, $base_url);
-      $node->save();
-      return ['node' => $node, 'action' => 'update'];
-    }
-    else {
-      // Створюємо нову.
-      $node = Node::create([
-        'type' => $node_type,
-        'langcode' => $node_data['language'] ?? 'uk',
-        'uid' => 1,
-      ]);
-
-      self::setNodeFields($node, $node_data, $base_url);
-      $node->save();
-      return ['node' => $node, 'action' => 'import'];
-    }
-  }
-
-  /**
-   * Створити переклад.
-   */
-  protected static function createTranslation(Node $original_node, array $node_data, string $base_url): array {
-    $language = $node_data['language'] ?? 'uk';
-
-    try {
-      // Створюємо переклад - ТОЧНО як у працюючому прикладі TranslationExample.php
-      $translation = $original_node->addTranslation($language);
-
-      // Встановлюємо title (обов'язкове поле).
-      $translation->set('title', $node_data['title']);
-
-      // Встановлюємо поля з JSON.
-      self::setNodeFields($translation, $node_data, $base_url);
-
-      // Копіюємо інші поля з оригіналу (як у TranslationExample.php).
-      // Це поля які НЕ перекладаються і не були встановлені з JSON.
-      $fields_set_from_json = ['title', 'body', 'status', 'promote', 'sticky', 'created', 'changed'];
-
-      // Додаємо всі field_* поля які є в JSON
-      if (!empty($node_data['fields'])) {
-        foreach (array_keys($node_data['fields']) as $field_name) {
-          $fields_set_from_json[] = $field_name;
-        }
+      if ($existing_nid) {
+        // Оновлюємо.
+        $node = Node::load($existing_nid);
+        $node->set('title', $title);
+        $node->save();
+        \Drupal::logger('migrate_from_drupal7')->info('Оновлено: nid=@nid', ['@nid' => $existing_nid]);
+        return ['success' => TRUE, 'nid' => $existing_nid];
       }
-
-      foreach ($original_node->getFieldDefinitions() as $field_name => $field_definition) {
-        // Пропускаємо системні поля та поля які вже встановили з JSON.
-        if (in_array($field_name, [
-            'nid', 'uuid', 'vid', 'langcode', 'default_langcode',
-            'content_translation_source', 'content_translation_outdated',
-            'revision_translation_affected', 'revision_default'
-          ]) || in_array($field_name, $fields_set_from_json)) {
-          continue;
-        }
-
-        // Копіюємо поле з оригіналу якщо воно не порожнє.
-        if ($original_node->hasField($field_name) && !$original_node->get($field_name)->isEmpty()) {
-          $translation->set($field_name, $original_node->get($field_name)->getValue());
-        }
-      }
-
-      // ВАЖЛИВО: Встановлюємо default_langcode = 0 (як у TranslationExample.php).
-      $translation->set('status', (int) ($node_data['status'] ?? 1));
-      $translation->set('default_langcode', 0);
-
-      // Зберігаємо.
-      $translation->save();
-
-      \Drupal::logger('migrate_from_drupal7')->info('Переклад @lang створено', ['@lang' => $language]);
-      return ['node' => $translation, 'action' => 'import'];
-    }
-    catch (\Exception $e) {
-      \Drupal::logger('migrate_from_drupal7')->error(
-        'Помилка створення перекладу: @message',
-        ['@message' => $e->getMessage()]
-      );
-      return ['node' => NULL, 'action' => 'skip'];
-    }
-  }
-
-  /**
-   * Встановити всі поля ноди з даних JSON.
-   */
-  protected static function setNodeFields($node, array $node_data, string $base_url): void {
-    // Базові поля.
-    $node->set('title', $node_data['title']);
-    $node->set('status', (int) ($node_data['status'] ?? 1));
-    $node->set('promote', (int) ($node_data['promote'] ?? 0));
-    $node->set('sticky', (int) ($node_data['sticky'] ?? 0));
-    $node->set('created', (int) ($node_data['created'] ?? time()));
-    $node->set('changed', (int) ($node_data['changed'] ?? time()));
-
-    // Body.
-    if (!empty($node_data['fields']['body'][0])) {
-      $body = $node_data['fields']['body'][0];
-      try {
-        $node->set('body', [
-          'value' => $body['value'] ?? '',
-          'format' => $body['format'] ?? 'full_html',
-        ]);
-      }
-      catch (\Exception $e) {
-        \Drupal::logger('migrate_from_drupal7')->error('Помилка встановлення body: @msg', ['@msg' => $e->getMessage()]);
-      }
-    }
-
-    // Інші поля.
-    if (!empty($node_data['fields'])) {
-      $fields = $node_data['fields'];
-      unset($fields['body']);
-
-      foreach ($fields as $field_name => $field_values) {
-        if (!$node->hasField($field_name) || empty($field_values)) {
-          continue;
-        }
-
-        try {
-          $field_definition = $node->getFieldDefinition($field_name);
-          $field_type = $field_definition->getType();
-
-          $processed_values = [];
-
-          foreach ($field_values as $field_value) {
-            if (!is_array($field_value)) {
-              continue;
-            }
-
-            switch ($field_type) {
-              case 'image':
-              case 'file':
-                $file_entity = self::importFile($field_value, $field_definition, $node, $base_url);
-                if ($file_entity) {
-                  $file_data = ['target_id' => $file_entity->id()];
-                  if ($field_type === 'image') {
-                    $file_data['alt'] = $field_value['alt'] ?? '';
-                    $file_data['title'] = $field_value['title'] ?? '';
-                  }
-                  $processed_values[] = $file_data;
-                }
-                break;
-
-              case 'entity_reference':
-                if (!empty($field_value['tid'])) {
-                  // Для таксономії потрібен маппінг, але зараз просто пропускаємо.
-                  // TODO: Додати маппінг таксономії.
-                }
-                break;
-
-              default:
-                if (isset($field_value['value'])) {
-                  $processed_values[] = ['value' => $field_value['value']];
-                }
-                break;
-            }
-          }
-
-          if (!empty($processed_values)) {
-            $node->set($field_name, $processed_values);
-            \Drupal::logger('migrate_from_drupal7')->info('Встановлено поле @field', ['@field' => $field_name]);
-          }
-        }
-        catch (\Exception $e) {
-          \Drupal::logger('migrate_from_drupal7')->error(
-            'Помилка встановлення поля @field: @msg',
-            ['@field' => $field_name, '@msg' => $e->getMessage()]
-          );
-        }
-      }
-    }
-  }
-
-  /**
-   * Імпортувати файл.
-   */
-  protected static function importFile(array $field_value, $field_definition, $node, string $base_url): ?File {
-    if (empty($base_url)) {
-      return NULL;
-    }
-
-    $file_url = NULL;
-
-    // Якщо є fid - запитуємо API.
-    if (!empty($field_value['fid'])) {
-      $api_client = \Drupal::service('migrate_from_drupal7.api_client');
-      $file_data = $api_client->getFileById($field_value['fid']);
-      $file_url = $file_data['url'] ?? $file_data['uri'] ?? NULL;
-    }
-    else {
-      $file_url = $field_value['url'] ?? $field_value['uri'] ?? NULL;
-    }
-
-    if (empty($file_url)) {
-      return NULL;
-    }
-
-    // Конвертуємо Drupal схему в HTTP URL.
-    if (preg_match('/^(public|private):\/\/(.+)$/', $file_url, $matches)) {
-      $path = $matches[2];
-      $file_url = rtrim($base_url, '/') . '/sites/default/files/' . ltrim($path, '/');
-    }
-    elseif (strpos($file_url, 'http') !== 0) {
-      $file_url = rtrim($base_url, '/') . '/' . ltrim($file_url, '/');
-    }
-
-    // Визначаємо директорію.
-    $field_settings = $field_definition->getSettings();
-    $uri_scheme = $field_settings['uri_scheme'] ?? 'public';
-    $file_directory = $field_settings['file_directory'] ?? '';
-
-    if (!empty($file_directory)) {
-      $file_directory = \Drupal::token()->replace($file_directory, ['node' => $node]);
-    }
-
-    $destination_directory = $uri_scheme . '://';
-    if (!empty($file_directory)) {
-      $destination_directory .= $file_directory . '/';
-    }
-
-    // Завантажуємо файл.
-    try {
-      $file_entity = self::downloadFile($file_url, $destination_directory);
-      if ($file_entity) {
-        $file_entity->setPermanent();
-        $file_entity->save();
-        return $file_entity;
-      }
-    }
-    catch (\Exception $e) {
-      \Drupal::logger('migrate_from_drupal7')->error('Помилка завантаження файлу: @message', ['@message' => $e->getMessage()]);
-    }
-
-    return NULL;
-  }
-
-  /**
-   * Завантажити файл з URL.
-   */
-  protected static function downloadFile(string $url, string $destination_directory): ?File {
-    try {
-      $file_system = \Drupal::service('file_system');
-      $file_system->prepareDirectory($destination_directory, \Drupal\Core\File\FileSystemInterface::CREATE_DIRECTORY);
-
-      $http_client = \Drupal::httpClient();
-      $response = $http_client->get($url);
-
-      if ($response->getStatusCode() !== 200) {
-        return NULL;
-      }
-
-      $file_content = $response->getBody()->getContents();
-      $filename = basename(parse_url($url, PHP_URL_PATH));
-      $destination = $destination_directory . $filename;
-      $file_uri = $file_system->saveData($file_content, $destination, \Drupal\Core\File\FileSystemInterface::EXISTS_RENAME);
-
-      if ($file_uri) {
-        $file = File::create([
-          'uri' => $file_uri,
+      else {
+        // Створюємо нову.
+        $node = Node::create([
+          'type' => $node_type,
+          'title' => $title,
+          'langcode' => $language,
+          'uid' => 1,
           'status' => 1,
-          'uid' => \Drupal::currentUser()->id(),
         ]);
-        $file->save();
-        return $file;
+        $node->save();
+        \Drupal::logger('migrate_from_drupal7')->info('Створено: nid=@nid', ['@nid' => $node->id()]);
+        return ['success' => TRUE, 'nid' => $node->id()];
       }
     }
-    catch (\Exception $e) {
-      \Drupal::logger('migrate_from_drupal7')->error('downloadFile error: @message', ['@message' => $e->getMessage()]);
-    }
-
-    return NULL;
   }
 
   /**
    * Batch завершено.
    */
   public static function batchFinished($success, array $results, array $operations) {
-    $messenger = \Drupal::messenger();
-
     if ($success) {
-      $total_imported = array_sum($results['imported'] ?? []);
-      $total_updated = array_sum($results['updated'] ?? []);
-      $total_skipped = array_sum($results['skipped'] ?? []);
-      $total_errors = array_sum($results['errors'] ?? []);
-
-      $messenger->addStatus(t(
-        'Імпорт завершено. Імпортовано: @import, Оновлено: @update, Пропущено: @skip, Помилок: @errors',
-        [
-          '@import' => $total_imported,
-          '@update' => $total_updated,
-          '@skip' => $total_skipped,
-          '@errors' => $total_errors,
-        ]
-      ));
+      \Drupal::messenger()->addStatus(t('Імпорт завершено!'));
     }
     else {
-      $messenger->addError(t('Виникла помилка під час імпорту.'));
+      \Drupal::messenger()->addError(t('Помилка імпорту.'));
     }
   }
 
