@@ -282,4 +282,46 @@ class Drupal7ApiClient {
     }
   }
 
+  /**
+   * Отримати дані файлу за FID.
+   *
+   * @param int|string $fid
+   *   FID файлу в Drupal 7.
+   *
+   * @return array|null
+   *   Дані файлу або NULL у разі помилки.
+   */
+  public function getFileById($fid) {
+    $base_url = $this->config->get('base_url');
+
+    if (empty($base_url)) {
+      $this->logger->error('Базова URL не налаштована');
+      return NULL;
+    }
+
+    $url = rtrim($base_url, '/') . '/json-api/file/' . $fid;
+
+    try {
+      $response = $this->httpClient->get($url);
+      $data = json_decode($response->getBody()->getContents(), TRUE);
+
+      if (json_last_error() !== JSON_ERROR_NONE) {
+        $this->logger->error('Помилка декодування JSON з @url: @error', [
+          '@url' => $url,
+          '@error' => json_last_error_msg(),
+        ]);
+        return NULL;
+      }
+
+      return $data;
+    }
+    catch (GuzzleException $e) {
+      $this->logger->error('Помилка запиту до @url: @message', [
+        '@url' => $url,
+        '@message' => $e->getMessage(),
+      ]);
+      return NULL;
+    }
+  }
+
 }
