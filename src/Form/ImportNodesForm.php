@@ -236,7 +236,12 @@ class ImportNodesForm extends FormBase {
 
       // Зберігаємо base_url для використання в файлових операціях.
       $config = \Drupal::config('migrate_from_drupal7.settings');
-      $context['sandbox']['base_url'] = $config->get('api_url') ?? '';
+      $context['sandbox']['base_url'] = $config->get('base_url') ?? '';
+
+      \Drupal::logger('migrate_from_drupal7')->info(
+        'Збережено base_url в sandbox: @url',
+        ['@url' => $context['sandbox']['base_url']]
+      );
 
       \Drupal::logger('migrate_from_drupal7')->info(
         'Початок імпорту @count матеріалів типу @type',
@@ -304,6 +309,9 @@ class ImportNodesForm extends FormBase {
         }
         elseif ($result['action'] === 'skip') {
           $context['sandbox']['skipped']++;
+        }
+        elseif ($result['action'] === 'translation') {
+          $context['sandbox']['imported']++;
         }
 
         // Зберігаємо маппінг.
@@ -391,6 +399,79 @@ class ImportNodesForm extends FormBase {
     $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
     $old_nid = $node_data['nid'];
     $node_type = $node_data['type'];
+    $language = $node_data['language'] ?? 'uk';
+
+    // Перевіряємо чи це переклад (tnid != nid).
+    $tnid = $node_data['tnid'] ?? $old_nid;
+    $is_translation = !empty($tnid) && $tnid != $old_nid;
+
+    if ($is_translation) {
+      // Це переклад - шукаємо оригінальну ноду.
+      $original_new_nid = $mapping_service->getNewId('node', $tnid, $node_type);
+
+      if ($original_new_nid) {
+        $original_node = Node::load($original_new_nid);
+
+        if ($original_node && !$original_node->hasTranslation($language)) {
+          // Додаємо переклад до оригінальної ноди.
+          try {
+            $translation_values = [
+              'title' => $node_data['title'],
+              'status' => $node_data['status'] ?? 1,
+              'promote' => $node_data['promote'] ?? 0,
+              'sticky' => $node_data['sticky'] ?? 0,
+              'created' => $node_data['created'] ?? \Drupal::time()->getRequestTime(),
+              'changed' => $node_data['changed'] ?? \Drupal::time()->getRequestTime(),
+            ];
+
+            // Body для перекладу.
+            $body_data = NULL;
+            if (!empty($node_data['fields']['body'][0])) {
+              $body_data = $node_data['fields']['body'][0];
+            }
+            elseif (!empty($node_data['body'])) {
+              $body_data = $node_data['body'];
+            }
+
+            if ($body_data) {
+              $body_value = $body_data['value'] ?? '';
+              $body_format = $body_data['format'] ?? 'full_html';
+
+              if ($body_format === 'full_html' && !empty($body_value)) {
+                $body_value = self::processImagesInHtml($body_value, $base_url);
+              }
+
+              $translation_values['body'] = [
+                'value' => $body_value,
+                'format' => $body_format,
+              ];
+            }
+
+            $translation = $original_node->addTranslation($language, $translation_values);
+
+            // Імпортуємо поля для перекладу.
+            if (!empty($node_data['fields'])) {
+              $fields_to_import = $node_data['fields'];
+              unset($fields_to_import['body']);
+              self::importFields($translation, $fields_to_import, $base_url);
+            }
+
+            $translation->save();
+
+            // Зберігаємо маппінг для перекладу.
+            $mapping_service->saveMapping('node', $old_nid, $original_new_nid, $node_type);
+
+            return ['node' => $translation, 'action' => 'translation'];
+          }
+          catch (\Exception $e) {
+            \Drupal::logger('migrate_from_drupal7')->error(
+              'Помилка додавання перекладу @lang для node @nid: @message',
+              ['@lang' => $language, '@nid' => $old_nid, '@message' => $e->getMessage()]
+            );
+          }
+        }
+      }
+    }
 
     // Перевіряємо чи існує маппінг.
     $existing_new_nid = $mapping_service->getNewId('node', $old_nid, $node_type);
@@ -431,11 +512,6 @@ class ImportNodesForm extends FormBase {
 
     if ($node) {
       $node->save();
-
-      // Додаємо переклади.
-      if (!empty($node_data['translations'])) {
-        self::addTranslations($node, $node_data['translations']);
-      }
     }
 
     return ['node' => $node, 'action' => $action];
@@ -657,42 +733,6 @@ class ImportNodesForm extends FormBase {
           'Помилка імпорту поля @field: @message',
           ['@field' => $field_name, '@message' => $e->getMessage()]
         );
-      }
-    }
-  }
-
-  /**
-   * Додати переклади до node.
-   */
-  protected static function addTranslations(Node $node, array $translations): void {
-    foreach ($translations as $langcode => $translation_data) {
-      if (!$node->hasTranslation($langcode)) {
-        try {
-          $translation_values = [
-            'title' => $translation_data['title'],
-          ];
-
-          // Body для перекладу.
-          if (!empty($translation_data['body'])) {
-            $translation_values['body'] = [
-              'value' => $translation_data['body']['value'] ?? '',
-              'format' => $translation_data['body']['format'] ?? 'basic_html',
-            ];
-          }
-
-          $node->addTranslation($langcode, $translation_values);
-          $node->save();
-        }
-        catch (\Exception $e) {
-          \Drupal::logger('migrate_from_drupal7')->error(
-            'Помилка додавання перекладу @lang для node @nid: @message',
-            [
-              '@lang' => $langcode,
-              '@nid' => $node->id(),
-              '@message' => $e->getMessage(),
-            ]
-          );
-        }
       }
     }
   }
