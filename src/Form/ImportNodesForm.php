@@ -714,14 +714,23 @@ class ImportNodesForm extends FormBase {
    */
   protected static function importFile(array $field_value, $field_definition, Node $node, string $base_url): ?File {
     if (empty($base_url)) {
+      \Drupal::logger('migrate_from_drupal7')->warning('importFile: base_url порожній');
       return NULL;
     }
+
+    \Drupal::logger('migrate_from_drupal7')->info('importFile: field_value = @value', [
+      '@value' => print_r($field_value, TRUE),
+    ]);
 
     // Якщо є fid - робимо запит до API за даними файлу.
     $file_data = NULL;
     if (!empty($field_value['fid'])) {
       $api_client = \Drupal::service('migrate_from_drupal7.api_client');
       $file_data = $api_client->getFileById($field_value['fid']);
+
+      \Drupal::logger('migrate_from_drupal7')->info('importFile: file_data з API = @data', [
+        '@data' => print_r($file_data, TRUE),
+      ]);
     }
 
     // Отримуємо URL файлу.
@@ -734,8 +743,11 @@ class ImportNodesForm extends FormBase {
     }
 
     if (empty($file_url)) {
+      \Drupal::logger('migrate_from_drupal7')->warning('importFile: file_url порожній');
       return NULL;
     }
+
+    \Drupal::logger('migrate_from_drupal7')->info('importFile: file_url = @url', ['@url' => $file_url]);
 
     // Конвертуємо Drupal схему (public://, private://) в HTTP URL.
     if (preg_match('/^(public|private):\/\/(.+)$/', $file_url, $matches)) {
@@ -747,6 +759,8 @@ class ImportNodesForm extends FormBase {
     elseif (strpos($file_url, 'http') !== 0) {
       $file_url = rtrim($base_url, '/') . '/' . ltrim($file_url, '/');
     }
+
+    \Drupal::logger('migrate_from_drupal7')->info('importFile: остаточний URL = @url', ['@url' => $file_url]);
 
     // Отримуємо налаштування поля для визначення директорії.
     $field_settings = $field_definition->getSettings();
@@ -848,6 +862,7 @@ class ImportNodesForm extends FormBase {
    */
   protected static function processImagesInHtml(string $html, string $base_url): string {
     if (empty($html) || empty($base_url)) {
+      \Drupal::logger('migrate_from_drupal7')->info('processImagesInHtml: html або base_url порожній');
       return $html;
     }
 
@@ -856,12 +871,20 @@ class ImportNodesForm extends FormBase {
 
     preg_match_all($pattern, $html, $matches);
 
+    \Drupal::logger('migrate_from_drupal7')->info('processImagesInHtml: знайдено @count img тегів', [
+      '@count' => count($matches[0]),
+    ]);
+
     if (empty($matches[0])) {
       return $html;
     }
 
     foreach ($matches[1] as $index => $img_src) {
       $original_src = $img_src;
+
+      \Drupal::logger('migrate_from_drupal7')->info('processImagesInHtml: обробка src = @src', [
+        '@src' => $img_src,
+      ]);
 
       // Конвертуємо Drupal схему в HTTP URL.
       if (preg_match('/^(public|private):\/\/(.+)$/', $img_src, $matches_scheme)) {
@@ -871,6 +894,7 @@ class ImportNodesForm extends FormBase {
 
       // Пропускаємо зовнішні URL (не з Drupal 7).
       if (strpos($img_src, 'http') === 0 && strpos($img_src, $base_url) === FALSE) {
+        \Drupal::logger('migrate_from_drupal7')->info('processImagesInHtml: пропущено зовнішній URL');
         continue;
       }
 
@@ -882,6 +906,10 @@ class ImportNodesForm extends FormBase {
         $full_url = $img_src;
       }
 
+      \Drupal::logger('migrate_from_drupal7')->info('processImagesInHtml: завантаження з @url', [
+        '@url' => $full_url,
+      ]);
+
       // Завантажуємо зображення.
       try {
         $file_entity = self::downloadFileFromUrl($full_url, 'public://inline-images/');
@@ -890,14 +918,22 @@ class ImportNodesForm extends FormBase {
           // Отримуємо новий URL.
           $new_url = \Drupal::service('file_url_generator')->generateAbsoluteString($file_entity->getFileUri());
 
+          \Drupal::logger('migrate_from_drupal7')->info('processImagesInHtml: заміна @old на @new', [
+            '@old' => $original_src,
+            '@new' => $new_url,
+          ]);
+
           // Замінюємо старий src на новий.
           $html = str_replace($original_src, $new_url, $html);
+        }
+        else {
+          \Drupal::logger('migrate_from_drupal7')->warning('processImagesInHtml: downloadFileFromUrl повернув NULL');
         }
       }
       catch (\Exception $e) {
         \Drupal::logger('migrate_from_drupal7')->warning(
-          'Не вдалося завантажити зображення з HTML: @url',
-          ['@url' => $full_url]
+          'Не вдалося завантажити зображення з HTML: @url - @error',
+          ['@url' => $full_url, '@error' => $e->getMessage()]
         );
       }
     }
