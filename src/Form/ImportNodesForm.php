@@ -539,19 +539,41 @@ class ImportNodesForm extends FormBase {
                 continue;
               }
 
+              $is_translatable = $field_definition->isTranslatable();
+              $original_value = $original_node->get($field_name)->getValue();
+
+              \Drupal::logger('migrate_from_drupal7')->info(
+                'Аналіз поля @field: translatable=@trans, has_value=@has_val, value=@val',
+                [
+                  '@field' => $field_name,
+                  '@trans' => $is_translatable ? 'ТАК' : 'НІ',
+                  '@has_val' => !empty($original_value) ? 'ТАК' : 'НІ',
+                  '@val' => json_encode($original_value),
+                ]
+              );
+
               // Перевіряємо чи поле є перекладним.
-              if ($field_definition->isTranslatable()) {
+              if ($is_translatable) {
                 // Перекладні поля - імпортуємо з Drupal 7 якщо потрібно.
                 // Наразі імпортуємо тільки title і body.
+                \Drupal::logger('migrate_from_drupal7')->info(
+                  'Поле @field є перекладним, пропускаємо копіювання',
+                  ['@field' => $field_name]
+                );
                 continue;
               }
 
               // Не-перекладні поля - копіюємо з оригіналу.
-              $original_value = $original_node->get($field_name)->getValue();
               if (!empty($original_value)) {
                 $translation->set($field_name, $original_value);
                 \Drupal::logger('migrate_from_drupal7')->info(
-                  'Скопійовано не-перекладне поле @field з оригіналу',
+                  'Скопійовано не-перекладне поле @field з оригіналу: @value',
+                  ['@field' => $field_name, '@value' => json_encode($original_value)]
+                );
+              }
+              else {
+                \Drupal::logger('migrate_from_drupal7')->warning(
+                  'Поле @field порожнє в оригіналі, нічого копіювати',
                   ['@field' => $field_name]
                 );
               }
