@@ -417,18 +417,20 @@ class ImportNodesForm extends FormBase {
         'status' => 1,
         'created' => $changed,
         'changed' => $changed,
+        'default_langcode' => TRUE,
       ];
 
-      // Додаємо body якщо є.
-      if (!empty($body_value)) {
-        $node_values['body'] = [
+      $node = Node::create($node_values);
+
+      // Додаємо body після створення, але перед збереженням.
+      if (!empty($body_value) && $node->hasField('body')) {
+        $node->set('body', [
           'value' => $body_value,
           'summary' => $body_summary,
           'format' => $body_format,
-        ];
+        ]);
       }
 
-      $node = Node::create($node_values);
       $node->save();
       \Drupal::logger('migrate_from_drupal7')->info('Створено: nid=@nid', ['@nid' => $node->id()]);
       return [
