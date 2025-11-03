@@ -712,10 +712,22 @@ class ImportNodesForm extends FormBase {
       return NULL;
     }
 
-    // Якщо це відносний шлях, додаємо base URL Drupal 7.
-    if (strpos($file_url, 'http') !== 0) {
-      $config = \Drupal::config('migrate_from_drupal7.settings');
-      $base_url = $config->get('api_url');
+    $config = \Drupal::config('migrate_from_drupal7.settings');
+    $base_url = $config->get('api_url');
+
+    if (empty($base_url)) {
+      \Drupal::logger('migrate_from_drupal7')->error('API URL не налаштовано');
+      return NULL;
+    }
+
+    // Конвертуємо Drupal схему (public://, private://) в HTTP URL.
+    if (preg_match('/^(public|private):\/\/(.+)$/', $file_url, $matches)) {
+      $scheme = $matches[1];
+      $path = $matches[2];
+      $file_url = rtrim($base_url, '/') . '/sites/default/files/' . ltrim($path, '/');
+    }
+    // Якщо це відносний шлях, додаємо base URL.
+    elseif (strpos($file_url, 'http') !== 0) {
       $file_url = rtrim($base_url, '/') . '/' . ltrim($file_url, '/');
     }
 
@@ -832,7 +844,19 @@ class ImportNodesForm extends FormBase {
     $config = \Drupal::config('migrate_from_drupal7.settings');
     $base_url = $config->get('api_url');
 
+    if (empty($base_url)) {
+      return $html;
+    }
+
     foreach ($matches[1] as $index => $img_src) {
+      $original_src = $img_src;
+
+      // Конвертуємо Drupal схему в HTTP URL.
+      if (preg_match('/^(public|private):\/\/(.+)$/', $img_src, $matches_scheme)) {
+        $path = $matches_scheme[2];
+        $img_src = rtrim($base_url, '/') . '/sites/default/files/' . ltrim($path, '/');
+      }
+
       // Пропускаємо зовнішні URL (не з Drupal 7).
       if (strpos($img_src, 'http') === 0 && strpos($img_src, $base_url) === FALSE) {
         continue;
@@ -855,7 +879,7 @@ class ImportNodesForm extends FormBase {
           $new_url = \Drupal::service('file_url_generator')->generateAbsoluteString($file_entity->getFileUri());
 
           // Замінюємо старий src на новий.
-          $html = str_replace($img_src, $new_url, $html);
+          $html = str_replace($original_src, $new_url, $html);
         }
       }
       catch (\Exception $e) {
