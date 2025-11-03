@@ -562,7 +562,43 @@ class ImportNodesForm extends FormBase {
               }
             }
 
-            // Встановлюємо часові мітки після імпорту полів.
+            // Перевіряємо та виправляємо всі поля ПЕРЕД встановленням часових міток.
+            // Це важливо бо addTranslation() може створити поля з некоректними значеннями.
+            // Drupal очікує що значення полів - це масиви, але іноді може бути інше.
+            foreach ($translation->getFields(FALSE) as $field_name => $field) {
+              // Пропускаємо базові entity поля.
+              if (in_array($field_name, ['nid', 'vid', 'uuid', 'langcode', 'type',
+                                          'revision_timestamp', 'revision_uid', 'revision_log',
+                                          'default_langcode', 'revision_translation_affected',
+                                          'created', 'changed', 'status', 'promote', 'sticky', 'uid'])) {
+                continue;
+              }
+
+              try {
+                $value = $field->getValue();
+
+                // Якщо значення не масив - виправляємо.
+                if (!is_array($value)) {
+                  \Drupal::logger('migrate_from_drupal7')->warning(
+                    'Поле @field має некоректне значення (тип: @type, значення: @val), виправляємо на []',
+                    [
+                      '@field' => $field_name,
+                      '@type' => gettype($value),
+                      '@val' => var_export($value, TRUE),
+                    ]
+                  );
+                  $translation->set($field_name, []);
+                }
+              }
+              catch (\Exception $e) {
+                \Drupal::logger('migrate_from_drupal7')->error(
+                  'Помилка перевірки поля @field: @message',
+                  ['@field' => $field_name, '@message' => $e->getMessage()]
+                );
+              }
+            }
+
+            // Встановлюємо часові мітки ПІСЛЯ виправлення полів.
             if (isset($node_data['created'])) {
               $translation->set('created', (int) $node_data['created']);
             }
