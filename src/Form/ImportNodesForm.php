@@ -503,6 +503,35 @@ class ImportNodesForm extends FormBase {
               'title' => $node_data['title'],
             ]);
 
+            // ВАЖЛИВО: Одразу після addTranslation очищуємо всі поля з некоректними значеннями.
+            // addTranslation може створити поля зі значенням TRUE замість масиву.
+            foreach ($translation->getFields(FALSE) as $field_name => $field) {
+              // Пропускаємо базові поля.
+              if (in_array($field_name, ['nid', 'vid', 'uuid', 'langcode', 'type', 'title',
+                                          'revision_timestamp', 'revision_uid', 'revision_log',
+                                          'default_langcode', 'revision_translation_affected'])) {
+                continue;
+              }
+
+              try {
+                $value = $field->getValue();
+                if (!is_array($value)) {
+                  \Drupal::logger('migrate_from_drupal7')->warning(
+                    'addTranslation створив поле @field з некоректним значенням (@type: @val), очищуємо',
+                    [
+                      '@field' => $field_name,
+                      '@type' => gettype($value),
+                      '@val' => var_export($value, TRUE),
+                    ]
+                  );
+                  $translation->set($field_name, []);
+                }
+              }
+              catch (\Exception $e) {
+                // Ігноруємо помилки при перевірці.
+              }
+            }
+
             // Встановлюємо базові поля.
             $translation->set('status', (int) ($node_data['status'] ?? 1));
             $translation->set('promote', (int) ($node_data['promote'] ?? 0));
@@ -562,43 +591,7 @@ class ImportNodesForm extends FormBase {
               }
             }
 
-            // Перевіряємо та виправляємо всі поля ПЕРЕД встановленням часових міток.
-            // Це важливо бо addTranslation() може створити поля з некоректними значеннями.
-            // Drupal очікує що значення полів - це масиви, але іноді може бути інше.
-            foreach ($translation->getFields(FALSE) as $field_name => $field) {
-              // Пропускаємо базові entity поля.
-              if (in_array($field_name, ['nid', 'vid', 'uuid', 'langcode', 'type',
-                                          'revision_timestamp', 'revision_uid', 'revision_log',
-                                          'default_langcode', 'revision_translation_affected',
-                                          'created', 'changed', 'status', 'promote', 'sticky', 'uid'])) {
-                continue;
-              }
-
-              try {
-                $value = $field->getValue();
-
-                // Якщо значення не масив - виправляємо.
-                if (!is_array($value)) {
-                  \Drupal::logger('migrate_from_drupal7')->warning(
-                    'Поле @field має некоректне значення (тип: @type, значення: @val), виправляємо на []',
-                    [
-                      '@field' => $field_name,
-                      '@type' => gettype($value),
-                      '@val' => var_export($value, TRUE),
-                    ]
-                  );
-                  $translation->set($field_name, []);
-                }
-              }
-              catch (\Exception $e) {
-                \Drupal::logger('migrate_from_drupal7')->error(
-                  'Помилка перевірки поля @field: @message',
-                  ['@field' => $field_name, '@message' => $e->getMessage()]
-                );
-              }
-            }
-
-            // Встановлюємо часові мітки ПІСЛЯ виправлення полів.
+            // Встановлюємо часові мітки.
             if (isset($node_data['created'])) {
               $translation->set('created', (int) $node_data['created']);
             }
