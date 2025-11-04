@@ -109,7 +109,7 @@ class ImportNodesForm extends FormBase {
     $log_service = \Drupal::service('migrate_from_drupal7.log');
 
     if (!isset($context['sandbox']['progress'])) {
-      // Завантажуємо всі ноди.
+      // Завантажуємо всі ноди (тільки nid + changed).
       $all_nodes = $api_client->getNodes($node_type, 9999, 0);
 
       if (empty($all_nodes)) {
@@ -117,89 +117,124 @@ class ImportNodesForm extends FormBase {
         return;
       }
 
-      // Розділяємо на оригінали та переклади.
-      $originals = [];
-      $translations = [];
-
-      foreach ($all_nodes as $node_preview) {
-        $nid = $node_preview['nid'];
-        $node_data = $api_client->getNodeById($nid);
-
-        if (!$node_data) {
-          continue;
-        }
-
-        $tnid = $node_data['tnid'] ?? $nid;
-        $is_translation = !empty($tnid) && $tnid != $nid && $tnid != '0';
-
-        if ($is_translation) {
-          $translations[] = $node_data;
-        }
-        else {
-          $originals[] = $node_data;
-        }
-      }
-
-      // Спочатку оригінали, потім переклади.
-      $context['sandbox']['all_nodes'] = array_merge($originals, $translations);
-      $context['sandbox']['total'] = count($context['sandbox']['all_nodes']);
+      // Зберігаємо список nid для обробки.
+      $context['sandbox']['node_list'] = $all_nodes;
+      $context['sandbox']['total'] = count($all_nodes);
       $context['sandbox']['progress'] = 0;
       $context['sandbox']['imported'] = 0;
       $context['sandbox']['errors'] = 0;
     }
 
-    // Обробляємо по 10 за раз.
-    $batch_size = 10;
-    $nodes = array_slice(
-      $context['sandbox']['all_nodes'],
+    // Обробляємо по 5 nid за раз (кожен nid може мати декілька мов).
+    $batch_size = 5;
+    $node_list_slice = array_slice(
+      $context['sandbox']['node_list'],
       $context['sandbox']['progress'],
       $batch_size
     );
 
-    foreach ($nodes as $node_data) {
+    foreach ($node_list_slice as $node_preview) {
+      $nid = $node_preview['nid'];
+
       try {
-        $result = self::importSingleNode($node_data);
-        if ($result['success']) {
-          $context['sandbox']['imported']++;
-          $mapping_service->saveMapping('node', $node_data['nid'], $result['nid'], $node_type);
+        // Завантажуємо ноду з усіма перекладами.
+        $nodes_data = $api_client->getNodeById($nid);
 
-          // Логуємо в власну систему модуля.
-          $log_service->logSuccess(
-            $result['action'] ?? 'import',
-            'node',
-            $result['message'] ?? 'Імпорт успішний',
-            (string) $result['nid'],
-            [
-              'old_nid' => $node_data['nid'],
-              'title' => $node_data['title'],
-              'language' => $node_data['language'] ?? 'uk',
-            ]
-          );
-        }
-        else {
+        if (empty($nodes_data) || !is_array($nodes_data)) {
           $context['sandbox']['errors']++;
+          $log_service->logError('import', 'node', 'Не вдалося завантажити дані ноди', (string) $nid, []);
+          continue;
+        }
 
-          // Логуємо помилку.
-          $log_service->logError(
-            'import',
-            'node',
-            $result['error'] ?? 'Не вдалося імпортувати',
-            (string) $node_data['nid'],
-            ['title' => $node_data['title']]
-          );
+        // Розділяємо на оригінал та переклади.
+        $original_data = NULL;
+        $translations_data = [];
+
+        foreach ($nodes_data as $node_data) {
+          $node_nid = $node_data['nid'];
+          $node_tnid = $node_data['tnid'] ?? $node_nid;
+          $is_translation = !empty($node_tnid) && $node_tnid != $node_nid && $node_tnid != '0';
+
+          if ($is_translation) {
+            $translations_data[] = $node_data;
+          }
+          else {
+            $original_data = $node_data;
+          }
+        }
+
+        // Спочатку імпортуємо оригінал.
+        if ($original_data) {
+          $result = self::importSingleNode($original_data);
+          if ($result['success']) {
+            $context['sandbox']['imported']++;
+            $mapping_service->saveMapping('node', $original_data['nid'], $result['nid'], $node_type);
+
+            $log_service->logSuccess(
+              $result['action'] ?? 'import',
+              'node',
+              $result['message'] ?? 'Імпорт успішний',
+              (string) $result['nid'],
+              [
+                'old_nid' => $original_data['nid'],
+                'title' => $original_data['title'],
+                'language' => $original_data['language'] ?? 'uk',
+              ]
+            );
+          }
+          else {
+            $context['sandbox']['errors']++;
+            $log_service->logError(
+              'import',
+              'node',
+              $result['error'] ?? 'Не вдалося імпортувати',
+              (string) $original_data['nid'],
+              ['title' => $original_data['title']]
+            );
+          }
+        }
+
+        // Потім імпортуємо переклади.
+        foreach ($translations_data as $translation_data) {
+          $result = self::importSingleNode($translation_data);
+          if ($result['success']) {
+            $context['sandbox']['imported']++;
+            $mapping_service->saveMapping('node', $translation_data['nid'], $result['nid'], $node_type);
+
+            $log_service->logSuccess(
+              $result['action'] ?? 'import',
+              'node',
+              $result['message'] ?? 'Імпорт успішний',
+              (string) $result['nid'],
+              [
+                'old_nid' => $translation_data['nid'],
+                'title' => $translation_data['title'],
+                'language' => $translation_data['language'] ?? 'uk',
+              ]
+            );
+          }
+          else {
+            $context['sandbox']['errors']++;
+            $log_service->logError(
+              'import',
+              'node',
+              $result['error'] ?? 'Не вдалося імпортувати',
+              (string) $translation_data['nid'],
+              ['title' => $translation_data['title']]
+            );
+          }
         }
       }
       catch (\Exception $e) {
         $context['sandbox']['errors']++;
         \Drupal::logger('migrate_from_drupal7')->error('Помилка: @msg', ['@msg' => $e->getMessage()]);
 
-        // Логуємо помилку в власну систему.
         $log_service->logError(
           'import',
           'node',
           'Помилка імпорту: ' . $e->getMessage(),
-          (string) $node_data['nid'],
-          ['title' => $node_data['title']]
+          (string) $nid,
+          []
         );
       }
 
@@ -214,7 +249,7 @@ class ImportNodesForm extends FormBase {
   }
 
   /**
-   * Імпорт однієї ноди - ТІЛЬКИ TITLE (body буде додано пізніше).
+   * Імпорт однієї ноди - зі всіма полями.
    */
   protected static function importSingleNode(array $node_data): array {
     $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
@@ -225,6 +260,9 @@ class ImportNodesForm extends FormBase {
     $title = $node_data['title'];
     $changed = (int) ($node_data['changed'] ?? time());
     $is_translation = !empty($tnid) && $tnid != $nid && $tnid != '0';
+
+    // Підготовка даних полів для імпорту.
+    $fields_data = self::prepareFieldsData($node_data, $title);
 
     \Drupal::logger('migrate_from_drupal7')->info(
       'Імпорт: nid=@nid, lang=@lang, is_trans=@trans, title=@title, changed=@changed',
@@ -266,6 +304,7 @@ class ImportNodesForm extends FormBase {
         if ($changed > $existing_changed) {
           // Потрібно оновити переклад.
           $translation->set('title', $title);
+          self::setFieldsToNode($translation, $fields_data);
           $translation->set('changed', $changed);
           $translation->save();
           \Drupal::logger('migrate_from_drupal7')->info('Переклад оновлено: @lang (changed: @old → @new)', [
@@ -295,6 +334,7 @@ class ImportNodesForm extends FormBase {
       // Переклад не існує - створюємо.
       $translation = $original->addTranslation($language);
       $translation->set('title', $title);
+      self::setFieldsToNode($translation, $fields_data);
       $translation->set('changed', $changed);
       $translation->set('default_langcode', 0);
       $translation->save();
@@ -322,6 +362,7 @@ class ImportNodesForm extends FormBase {
           if ($changed > $existing_changed) {
             // Потрібно оновити.
             $node->set('title', $title);
+            self::setFieldsToNode($node, $fields_data);
             $node->set('changed', $changed);
             $node->save();
             \Drupal::logger('migrate_from_drupal7')->info('Оновлено: nid=@nid (changed: @old → @new)', [
@@ -364,6 +405,7 @@ class ImportNodesForm extends FormBase {
         'created' => $changed,
         'changed' => $changed,
       ]);
+      self::setFieldsToNode($node, $fields_data);
       $node->save();
       \Drupal::logger('migrate_from_drupal7')->info('Створено: nid=@nid', ['@nid' => $node->id()]);
       return [
@@ -372,6 +414,80 @@ class ImportNodesForm extends FormBase {
         'action' => 'import',
         'message' => "Створено нову ноду #" . $node->id(),
       ];
+    }
+  }
+
+  /**
+   * Підготовка даних полів з JSON.
+   *
+   * @param array $node_data
+   *   Дані ноди з JSON.
+   * @param string $title
+   *   Заголовок ноди (для alt тексту зображень).
+   *
+   * @return array
+   *   Масив підготовлених даних полів.
+   */
+  protected static function prepareFieldsData(array $node_data, string $title): array {
+    $fields_data = [];
+
+    if (empty($node_data['fields']) || !is_array($node_data['fields'])) {
+      return $fields_data;
+    }
+
+    foreach ($node_data['fields'] as $field_name => $field_values) {
+      if (empty($field_values) || !is_array($field_values)) {
+        continue;
+      }
+
+      // Обробка body (text_with_summary).
+      if ($field_name === 'body') {
+        $body_data = $field_values[0] ?? [];
+        if (!empty($body_data['value'])) {
+          $fields_data[$field_name] = [
+            'value' => $body_data['value'],
+            'summary' => $body_data['summary'] ?? '',
+            'format' => !empty($body_data['format']) ? $body_data['format'] : 'plain_text',
+          ];
+        }
+      }
+      // Обробка зображень (field_image тощо).
+      elseif (strpos($field_name, 'field_') === 0 && !empty($field_values[0]['fid'])) {
+        // TODO: Додати обробку зображень - завантаження файлів.
+        // Поки що пропускаємо.
+      }
+      // Обробка простих текстових полів.
+      elseif (!empty($field_values[0]['value'])) {
+        $fields_data[$field_name] = $field_values[0]['value'];
+      }
+    }
+
+    return $fields_data;
+  }
+
+  /**
+   * Встановлення полів в ноду.
+   *
+   * @param \Drupal\node\Entity\Node $node
+   *   Нода.
+   * @param array $fields_data
+   *   Підготовлені дані полів.
+   */
+  protected static function setFieldsToNode($node, array $fields_data): void {
+    foreach ($fields_data as $field_name => $field_value) {
+      if (!$node->hasField($field_name)) {
+        continue;
+      }
+
+      try {
+        $node->set($field_name, $field_value);
+      }
+      catch (\Exception $e) {
+        \Drupal::logger('migrate_from_drupal7')->warning(
+          'Не вдалося встановити поле @field: @msg',
+          ['@field' => $field_name, '@msg' => $e->getMessage()]
+        );
+      }
     }
   }
 
