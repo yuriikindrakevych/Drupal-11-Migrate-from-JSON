@@ -146,17 +146,21 @@ class ImportUserFieldsForm extends FormBase {
       }
     }
 
-    if (empty($selected_fields)) {
-      $this->messenger()->addWarning($this->t('Не вибрано жодного поля для імпорту.'));
-      return;
-    }
-
     $operations = [];
-    foreach ($selected_fields as $field_info) {
-      $operations[] = [
-        [self::class, 'batchImportField'],
-        [$field_info],
-      ];
+
+    // Завжди створюємо поле user_avatar на початку.
+    $operations[] = [
+      [self::class, 'batchCreateUserAvatar'],
+      [],
+    ];
+
+    if (!empty($selected_fields)) {
+      foreach ($selected_fields as $field_info) {
+        $operations[] = [
+          [self::class, 'batchImportField'],
+          [$field_info],
+        ];
+      }
     }
 
     $batch = [
@@ -170,6 +174,101 @@ class ImportUserFieldsForm extends FormBase {
   }
 
   /**
+   * Batch операція для створення поля user_avatar.
+   *
+   * @param array $context
+   *   Контекст batch операції.
+   */
+  public static function batchCreateUserAvatar(array &$context) {
+    try {
+      // Створюємо поле user_avatar якщо воно не існує.
+      $field_storage = FieldStorageConfig::loadByName('user', 'user_avatar');
+
+      if (!$field_storage) {
+        $field_storage = FieldStorageConfig::create([
+          'field_name' => 'user_avatar',
+          'entity_type' => 'user',
+          'type' => 'image',
+          'cardinality' => 1,
+        ]);
+        $field_storage->save();
+
+        $field = FieldConfig::create([
+          'field_storage' => $field_storage,
+          'bundle' => 'user',
+          'label' => 'Аватар',
+          'description' => 'Фото профілю користувача',
+          'required' => FALSE,
+          'settings' => [
+            'file_directory' => 'pictures',
+            'max_filesize' => '2 MB',
+            'max_resolution' => '800x800',
+            'min_resolution' => '',
+            'alt_field' => FALSE,
+            'alt_field_required' => FALSE,
+            'title_field' => FALSE,
+            'title_field_required' => FALSE,
+          ],
+        ]);
+        $field->save();
+
+        // Налаштовуємо відображення у формі.
+        $form_display = EntityFormDisplay::load('user.user.default');
+        if (!$form_display) {
+          $form_display = EntityFormDisplay::create([
+            'targetEntityType' => 'user',
+            'bundle' => 'user',
+            'mode' => 'default',
+            'status' => TRUE,
+          ]);
+        }
+        $form_display->setComponent('user_avatar', [
+          'type' => 'image_image',
+          'weight' => 10,
+          'settings' => [
+            'progress_indicator' => 'throbber',
+            'preview_image_style' => 'thumbnail',
+          ],
+        ]);
+        $form_display->save();
+
+        // Налаштовуємо відображення при перегляді.
+        $view_display = EntityViewDisplay::load('user.user.default');
+        if (!$view_display) {
+          $view_display = EntityViewDisplay::create([
+            'targetEntityType' => 'user',
+            'bundle' => 'user',
+            'mode' => 'default',
+            'status' => TRUE,
+          ]);
+        }
+        $view_display->setComponent('user_avatar', [
+          'type' => 'image',
+          'weight' => 0,
+          'label' => 'hidden',
+          'settings' => [
+            'image_style' => 'medium',
+            'image_link' => '',
+          ],
+        ]);
+        $view_display->save();
+
+        $context['results']['created'][] = 'Аватар';
+        $context['message'] = t('Створено поле user_avatar');
+      }
+      else {
+        $context['message'] = t('Поле user_avatar вже існує');
+      }
+    }
+    catch (\Exception $e) {
+      \Drupal::logger('migrate_from_drupal7')->error('Помилка створення поля user_avatar: @message', [
+        '@message' => $e->getMessage(),
+      ]);
+      $context['results']['errors'][] = 'user_avatar: ' . $e->getMessage();
+    }
+  }
+
+  /**
    * Batch операція для імпорту поля користувача.
    *
    * @param array $field_info
@@ -179,9 +278,15 @@ class ImportUserFieldsForm extends FormBase {
    */
   public static function batchImportField(array $field_info, array &$context) {
     try {
-      self::createUserField($field_info);
-      $context['results']['created'][] = $field_info['label'];
-      $context['message'] = t('Імпортовано поле: @name', ['@name' => $field_info['label']]);
+      $result = self::createUserField($field_info);
+      if ($result === 'skipped') {
+        $context['results']['skipped'][] = $field_info['label'];
+        $context['message'] = t('Пропущено (вже існує): @name', ['@name' => $field_info['label']]);
+      }
+      else {
+        $context['results']['created'][] = $field_info['label'];
+        $context['message'] = t('Імпортовано поле: @name', ['@name' => $field_info['label']]);
+      }
     }
     catch (\Exception $e) {
       \Drupal::logger('migrate_from_drupal7')->error('Помилка імпорту поля користувача @name: @message', [
@@ -197,9 +302,19 @@ class ImportUserFieldsForm extends FormBase {
    *
    * @param array $field_info
    *   Інформація про поле.
+   *
+   * @return string|null
+   *   'skipped' якщо поле вже існує, NULL якщо створено.
    */
   protected static function createUserField(array $field_info) {
     $field_name = $field_info['field_name'];
+
+    // Перевіряємо чи поле вже існує.
+    $existing_field = FieldConfig::loadByName('user', 'user', $field_name);
+    if ($existing_field) {
+      // Поле вже існує - пропускаємо.
+      return 'skipped';
+    }
 
     // Мапінг типів полів з Drupal 7 на Drupal 11.
     $field_type_map = [

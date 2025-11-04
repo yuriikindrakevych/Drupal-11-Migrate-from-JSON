@@ -331,10 +331,10 @@ class ImportUsersForm extends FormBase {
     if (!empty($user_data['picture'])) {
       $avatar = self::downloadAvatar($user_data['picture'], $user_data['uid']);
       if ($avatar) {
-        // Перевіряємо чи існує поле user_picture.
-        if ($user->hasField('user_picture')) {
+        // Перевіряємо чи існує поле user_avatar.
+        if ($user->hasField('user_avatar')) {
           try {
-            $user->set('user_picture', ['target_id' => $avatar->id()]);
+            $user->set('user_avatar', ['target_id' => $avatar->id()]);
           }
           catch (\Exception $e) {
             // Не вдалося встановити аватар.
