@@ -460,6 +460,8 @@ class ImportNodesForm extends FormBase {
       return $fields_data;
     }
 
+    $bundle = $node_data['type'];
+
     foreach ($node_data['fields'] as $field_name => $field_values) {
       if (empty($field_values) || !is_array($field_values)) {
         continue;
@@ -482,7 +484,7 @@ class ImportNodesForm extends FormBase {
         $image_counter = 1;
 
         foreach ($field_values as $image_data) {
-          $file = self::downloadFile($image_data, $field_name);
+          $file = self::downloadFile($image_data, $field_name, $bundle);
           if ($file) {
             $alt = $image_data['alt'] ?? '';
             // Якщо alt порожній, використовуємо title ноди.
@@ -509,7 +511,7 @@ class ImportNodesForm extends FormBase {
         $files = [];
 
         foreach ($field_values as $file_data) {
-          $file = self::downloadFile($file_data, $field_name);
+          $file = self::downloadFile($file_data, $field_name, $bundle);
           if ($file) {
             $files[] = [
               'target_id' => $file->id(),
@@ -621,12 +623,14 @@ class ImportNodesForm extends FormBase {
    * @param array $file_data
    *   Дані файлу з JSON (fid, filename, uri, absolute_url тощо).
    * @param string $field_name
-   *   Назва поля (для логування).
+   *   Назва поля.
+   * @param string $bundle
+   *   Тип контенту (bundle).
    *
    * @return \Drupal\file\FileInterface|null
    *   File entity або NULL у разі помилки.
    */
-  protected static function downloadFile(array $file_data, string $field_name) {
+  protected static function downloadFile(array $file_data, string $field_name, string $bundle) {
     $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
     $old_fid = $file_data['fid'];
 
@@ -647,8 +651,32 @@ class ImportNodesForm extends FormBase {
       return NULL;
     }
 
-    // Визначаємо директорію для збереження.
-    $uri = $file_data['uri'] ?? 'public://' . $file_data['filename'];
+    // Отримуємо налаштування поля для визначення директорії.
+    $field_config = \Drupal\field\Entity\FieldConfig::loadByName('node', $bundle, $field_name);
+    $file_directory = '';
+    $uri_scheme = 'public';
+
+    if ($field_config) {
+      $settings = $field_config->getSettings();
+      $file_directory = $settings['file_directory'] ?? '';
+      $uri_scheme = $settings['uri_scheme'] ?? 'public';
+
+      // Обробляємо токени в file_directory.
+      if (!empty($file_directory)) {
+        $token_service = \Drupal::token();
+        $file_directory = $token_service->replace($file_directory, [], ['clear' => TRUE]);
+      }
+    }
+
+    // Формуємо URI з урахуванням налаштувань поля.
+    $filename = $file_data['filename'];
+    if (!empty($file_directory)) {
+      $uri = $uri_scheme . '://' . trim($file_directory, '/') . '/' . $filename;
+    }
+    else {
+      $uri = $uri_scheme . '://' . $filename;
+    }
+
     $directory = dirname($uri);
 
     // Створюємо директорію якщо не існує.
@@ -666,8 +694,9 @@ class ImportNodesForm extends FormBase {
       if ($file) {
         // Зберігаємо маппінг.
         $mapping_service->saveMapping('file', $old_fid, $file->id());
-        \Drupal::logger('migrate_from_drupal7')->info('Завантажено файл @filename (old_fid=@old, new_fid=@new)', [
+        \Drupal::logger('migrate_from_drupal7')->info('Завантажено файл @filename → @uri (old_fid=@old, new_fid=@new)', [
           '@filename' => $file_data['filename'],
+          '@uri' => $uri,
           '@old' => $old_fid,
           '@new' => $file->id(),
         ]);
