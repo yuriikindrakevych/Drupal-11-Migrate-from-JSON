@@ -258,15 +258,6 @@ class ImportTermsForm extends FormBase {
       $context['sandbox']['updated'] = 0;
       $context['sandbox']['errors'] = 0;
 
-      \Drupal::logger('migrate_from_drupal7')->info(
-        'Початок імпорту @count термінів для словника @vocab (існуючих маппінгів: @mappings)',
-        [
-          '@count' => $context['sandbox']['total'],
-          '@vocab' => $vocabulary_id,
-          '@mappings' => count($existing_mappings),
-        ]
-      );
-
       // Логуємо початок імпорту.
       $log_service->log(
         'import',
@@ -321,17 +312,6 @@ class ImportTermsForm extends FormBase {
             'new_tid' => $term->id(),
             'vocabulary_id' => $vocabulary_id,
             'parent' => $term_data['parent'] ?? '0',
-          ]
-        );
-
-        \Drupal::logger('migrate_from_drupal7')->info(
-          '@action: @name (old_tid=@old, new_tid=@new, parent=@parent)',
-          [
-            '@action' => $is_update ? 'Оновлено' : 'Імпортовано',
-            '@name' => $term_data['name'],
-            '@old' => $term_data['tid'],
-            '@new' => $term->id(),
-            '@parent' => $term_data['parent'] ?? '0',
           ]
         );
       }
@@ -427,12 +407,6 @@ class ImportTermsForm extends FormBase {
         $old_parent_tid = $parent_value;
         if (isset($tid_map[$old_parent_tid])) {
           $parent_id = $tid_map[$old_parent_tid];
-        }
-        else {
-          \Drupal::logger('migrate_from_drupal7')->warning(
-            'Не знайдено parent @parent для терміну @term',
-            ['@parent' => $old_parent_tid, '@term' => $term_data['name']]
-          );
         }
       }
     }

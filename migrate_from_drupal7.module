@@ -87,7 +87,6 @@ function migrate_from_drupal7_cron() {
   }
 
   // Логуємо початок cron імпорту.
-  \Drupal::logger('migrate_from_drupal7')->info('Cron: початок автоматичного імпорту');
   $log_service->log(
     'cron',
     'import',
@@ -141,12 +140,4 @@ function migrate_from_drupal7_cron() {
   // Запускаємо batch.
   $batch =& batch_get();
   $batch['progressive'] = FALSE;
-
-  \Drupal::logger('migrate_from_drupal7')->info(
-    'Cron: запущено імпорт (@vocabularies словників, @nodes типів матеріалів)',
-    [
-      '@vocabularies' => count($vocabularies),
-      '@nodes' => count($node_types),
-    ]
-  );
 }

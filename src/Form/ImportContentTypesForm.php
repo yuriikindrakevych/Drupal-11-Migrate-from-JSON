@@ -375,10 +375,6 @@ class ImportContentTypesForm extends FormBase {
       if ($field_storage->getCardinality() != $cardinality) {
         $field_storage->setCardinality($cardinality);
         $field_storage->save();
-        \Drupal::logger('migrate_from_drupal7')->info(
-          'Оновлено cardinality для поля @field: @cardinality',
-          ['@field' => $field_name, '@cardinality' => $cardinality == -1 ? 'необмежено' : $cardinality]
-        );
       }
     }
 
@@ -417,25 +413,7 @@ class ImportContentTypesForm extends FormBase {
                 'target_bundles' => $target_bundles,
               ],
             ];
-
-            \Drupal::logger('migrate_from_drupal7')->info(
-              'Налаштовано прив\'язку поля @field до словників: @vocabularies',
-              ['@field' => $field_name, '@vocabularies' => implode(', ', array_keys($target_bundles))]
-            );
           }
-          else {
-            \Drupal::logger('migrate_from_drupal7')->warning(
-              'Для поля @field типу taxonomy_term_reference не знайдено machine_name в vocabularies',
-              ['@field' => $field_name]
-            );
-          }
-        }
-        else {
-          // Логуємо попередження якщо vocabularies не знайдено.
-          \Drupal::logger('migrate_from_drupal7')->warning(
-            'Для поля @field типу taxonomy_term_reference не знайдено масив vocabularies. Дані поля: @data',
-            ['@field' => $field_name, '@data' => print_r($field_info, TRUE)]
-          );
         }
       }
 
@@ -448,11 +426,6 @@ class ImportContentTypesForm extends FormBase {
         // Перетворюємо масив розширень в рядок через пробіл.
         $extensions = is_array($field_info['allowed']) ? implode(' ', $field_info['allowed']) : $field_info['allowed'];
         $field_settings['settings']['file_extensions'] = $extensions;
-
-        \Drupal::logger('migrate_from_drupal7')->info(
-          'Налаштовано дозволені розширення для поля @field: @extensions',
-          ['@field' => $field_name, '@extensions' => $extensions]
-        );
       }
 
       $field = FieldConfig::create($field_settings);

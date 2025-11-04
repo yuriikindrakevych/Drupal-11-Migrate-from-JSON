@@ -290,10 +290,6 @@ class ImportTaxonomyForm extends FormBase {
     // Перевіряємо чи доступний модуль content_translation.
     $module_handler = \Drupal::moduleHandler();
     if (!$module_handler->moduleExists('content_translation')) {
-      \Drupal::logger('migrate_from_drupal7')->warning(
-        'Модуль content_translation не увімкнено. Мультимовність для словника @name не буде налаштована.',
-        ['@name' => $vocabulary_data['name']]
-      );
       return;
     }
 
@@ -320,11 +316,6 @@ class ImportTaxonomyForm extends FormBase {
       $config->set('language_alterable', TRUE);
 
       $config->save();
-
-      \Drupal::logger('migrate_from_drupal7')->info(
-        'Налаштовано мультимовність для словника @name',
-        ['@name' => $vocabulary_data['name']]
-      );
     }
     catch (\Exception $e) {
       \Drupal::logger('migrate_from_drupal7')->error(
