@@ -181,6 +181,7 @@ class ImportUsersForm extends FormBase {
     $username = $user_data['name'];
     $mail = $user_data['mail'];
     $created = (int) ($user_data['created'] ?? time());
+    $changed = (int) ($user_data['changed'] ?? time());
     $status = (int) ($user_data['status'] ?? 1);
     $access = (int) ($user_data['access'] ?? 0);
     $login = (int) ($user_data['login'] ?? 0);
@@ -191,15 +192,30 @@ class ImportUsersForm extends FormBase {
     if ($existing_uid) {
       $user = User::load($existing_uid);
       if ($user) {
-        // Користувач існує - оновлюємо.
-        self::setUserFields($user, $user_data);
-        $user->save();
-        return [
-          'success' => TRUE,
-          'uid' => $existing_uid,
-          'action' => 'update',
-          'message' => "Оновлено користувача: $username",
-        ];
+        // Користувач існує - перевіряємо чи потрібно оновити.
+        $existing_changed = $user->getChangedTime();
+
+        if ($changed > $existing_changed) {
+          // Потрібно оновити.
+          self::setUserFields($user, $user_data);
+          $user->set('changed', $changed);
+          $user->save();
+          return [
+            'success' => TRUE,
+            'uid' => $existing_uid,
+            'action' => 'update',
+            'message' => "Оновлено користувача: $username (changed: " . date('Y-m-d H:i:s', $existing_changed) . ' → ' . date('Y-m-d H:i:s', $changed) . ')',
+          ];
+        }
+        else {
+          // Користувач актуальний - пропускаємо.
+          return [
+            'success' => TRUE,
+            'uid' => $existing_uid,
+            'action' => 'skip',
+            'message' => 'Користувач актуальний, пропущено',
+          ];
+        }
       }
       else {
         // Маппінг є, але користувача немає - видаляємо маппінг.
@@ -214,16 +230,31 @@ class ImportUsersForm extends FormBase {
 
     if (!empty($existing_users)) {
       $existing_user = reset($existing_users);
-      // Email вже існує - зберігаємо маппінг та оновлюємо дані.
+      // Email вже існує - зберігаємо маппінг та перевіряємо чи потрібно оновити.
       $mapping_service->saveMapping('user', $old_uid, $existing_user->id());
-      self::setUserFields($existing_user, $user_data);
-      $existing_user->save();
-      return [
-        'success' => TRUE,
-        'uid' => $existing_user->id(),
-        'action' => 'update',
-        'message' => "Знайдено існуючого користувача з email $mail, оновлено",
-      ];
+
+      $existing_changed = $existing_user->getChangedTime();
+      if ($changed > $existing_changed) {
+        // Потрібно оновити.
+        self::setUserFields($existing_user, $user_data);
+        $existing_user->set('changed', $changed);
+        $existing_user->save();
+        return [
+          'success' => TRUE,
+          'uid' => $existing_user->id(),
+          'action' => 'update',
+          'message' => "Знайдено існуючого користувача з email $mail, оновлено",
+        ];
+      }
+      else {
+        // Користувач актуальний - пропускаємо.
+        return [
+          'success' => TRUE,
+          'uid' => $existing_user->id(),
+          'action' => 'skip',
+          'message' => 'Користувач з таким email актуальний, пропущено',
+        ];
+      }
     }
 
     // Перевіряємо чи username вже використовується.
@@ -245,6 +276,7 @@ class ImportUsersForm extends FormBase {
       'pass' => $password,
       'status' => $status,
       'created' => $created,
+      'changed' => $changed,
       'access' => $access,
       'login' => $login,
     ]);
