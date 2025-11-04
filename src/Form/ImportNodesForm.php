@@ -465,25 +465,115 @@ class ImportNodesForm extends FormBase {
         continue;
       }
 
-      // Обробка body (text_with_summary).
-      if ($field_name === 'body') {
-        $body_data = $field_values[0] ?? [];
-        if (!empty($body_data['value'])) {
-          $fields_data[$field_name] = [
-            'value' => $body_data['value'],
-            'summary' => $body_data['summary'] ?? '',
-            'format' => !empty($body_data['format']) ? $body_data['format'] : 'plain_text',
-          ];
+      // Визначаємо тип поля за його структурою.
+      $first_item = $field_values[0] ?? [];
+
+      // 1. Body (text_with_summary) - має value + format + summary.
+      if ($field_name === 'body' && isset($first_item['value'])) {
+        $fields_data[$field_name] = [
+          'value' => $first_item['value'],
+          'summary' => $first_item['summary'] ?? '',
+          'format' => !empty($first_item['format']) ? $first_item['format'] : 'plain_text',
+        ];
+      }
+      // 2. Зображення (image) - має fid + alt + title.
+      elseif (isset($first_item['fid']) && isset($first_item['filemime']) && strpos($first_item['filemime'], 'image/') === 0) {
+        // TODO: Додати завантаження файлів з Drupal 7.
+        // Поки що пропускаємо.
+        \Drupal::logger('migrate_from_drupal7')->info('Пропускаємо зображення @field - завантаження файлів TODO', ['@field' => $field_name]);
+      }
+      // 3. Файли (file) - має fid + filename + uri.
+      elseif (isset($first_item['fid']) && isset($first_item['filename'])) {
+        // TODO: Додати завантаження файлів з Drupal 7.
+        // Поки що пропускаємо.
+        \Drupal::logger('migrate_from_drupal7')->info('Пропускаємо файл @field - завантаження файлів TODO', ['@field' => $field_name]);
+      }
+      // 4. Таксономія (entity_reference) - має tid.
+      elseif (isset($first_item['tid'])) {
+        $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
+        $term_ids = [];
+
+        foreach ($field_values as $term_data) {
+          $old_tid = $term_data['tid'];
+          // Шукаємо новий tid в маппінгу.
+          $new_tid = $mapping_service->getNewId('taxonomy_term', $old_tid);
+          if ($new_tid) {
+            $term_ids[] = ['target_id' => $new_tid];
+          }
+          else {
+            \Drupal::logger('migrate_from_drupal7')->warning('Термін tid=@tid не знайдено в маппінгу для поля @field', [
+              '@tid' => $old_tid,
+              '@field' => $field_name,
+            ]);
+          }
+        }
+
+        if (!empty($term_ids)) {
+          $fields_data[$field_name] = $term_ids;
         }
       }
-      // Обробка зображень (field_image тощо).
-      elseif (strpos($field_name, 'field_') === 0 && !empty($field_values[0]['fid'])) {
-        // TODO: Додати обробку зображень - завантаження файлів.
-        // Поки що пропускаємо.
+      // 5. Entity reference (node reference) - має target_id.
+      elseif (isset($first_item['target_id'])) {
+        $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
+        $node_ids = [];
+
+        foreach ($field_values as $ref_data) {
+          $old_nid = $ref_data['target_id'];
+          // Шукаємо новий nid в маппінгу.
+          $new_nid = $mapping_service->getNewId('node', $old_nid);
+          if ($new_nid) {
+            $node_ids[] = ['target_id' => $new_nid];
+          }
+        }
+
+        if (!empty($node_ids)) {
+          $fields_data[$field_name] = $node_ids;
+        }
       }
-      // Обробка простих текстових полів.
-      elseif (!empty($field_values[0]['value'])) {
-        $fields_data[$field_name] = $field_values[0]['value'];
+      // 6. Текстові поля з форматом (text_long) - має value + format.
+      elseif (isset($first_item['value']) && isset($first_item['format'])) {
+        if (count($field_values) == 1) {
+          // Одне значення.
+          $fields_data[$field_name] = [
+            'value' => $first_item['value'],
+            'format' => !empty($first_item['format']) ? $first_item['format'] : 'plain_text',
+          ];
+        }
+        else {
+          // Множинні значення.
+          $values = [];
+          foreach ($field_values as $item) {
+            $values[] = [
+              'value' => $item['value'],
+              'format' => !empty($item['format']) ? $item['format'] : 'plain_text',
+            ];
+          }
+          $fields_data[$field_name] = $values;
+        }
+      }
+      // 7. Прості текстові поля (string, string_long) - тільки value.
+      elseif (isset($first_item['value'])) {
+        if (count($field_values) == 1) {
+          // Одне значення.
+          $fields_data[$field_name] = $first_item['value'];
+        }
+        else {
+          // Множинні значення.
+          $values = [];
+          foreach ($field_values as $item) {
+            if (isset($item['value'])) {
+              $values[] = $item['value'];
+            }
+          }
+          $fields_data[$field_name] = $values;
+        }
+      }
+      // 8. Інші типи - логуємо що пропустили.
+      else {
+        \Drupal::logger('migrate_from_drupal7')->info('Невідомий тип поля @field, структура: @struct', [
+          '@field' => $field_name,
+          '@struct' => print_r($first_item, TRUE),
+        ]);
       }
     }
 
