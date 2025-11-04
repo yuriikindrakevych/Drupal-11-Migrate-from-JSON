@@ -38,6 +38,14 @@ migrate_from_drupal7.import_nodes:
   requirements:
     _permission: 'administer site configuration'
 
+migrate_from_drupal7.import_user_fields:
+  path: '/admin/config/content/migrate-drupal7/import-user-fields'
+  defaults:
+    _form: '\Drupal\migrate_from_drupal7\Form\ImportUserFieldsForm'
+    _title: 'Імпорт полів користувача'
+  requirements:
+    _permission: 'administer site configuration'
+
 migrate_from_drupal7.overview:
   path: '/admin/config/content/migrate-drupal7'
   defaults:

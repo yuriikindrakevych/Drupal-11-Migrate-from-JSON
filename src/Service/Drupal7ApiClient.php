@@ -137,6 +137,16 @@ class Drupal7ApiClient {
   }
 
   /**
+   * Отримати поля користувачів з Drupal 7.
+   *
+   * @return array|null
+   *   Масив полів користувачів або NULL у разі помилки.
+   */
+  public function getUserFields() {
+    return $this->get('user_fields');
+  }
+
+  /**
    * Отримати терміни словника таксономії за machine_name.
    *
    * @param string $machine_name

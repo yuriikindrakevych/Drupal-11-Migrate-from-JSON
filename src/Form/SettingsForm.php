@@ -81,6 +81,10 @@ class SettingsForm extends ConfigFormBase {
         'title' => 'Отримати дані про файл',
         'default' => '/json-api/file',
       ],
+      'user_fields' => [
+        'title' => 'Отримати дані про поля користувачів',
+        'default' => '/json-api/user-fields',
+      ],
       'users' => [
         'title' => 'Отримати користувачів',
         'default' => '/json-api/users',
@@ -117,6 +121,7 @@ class SettingsForm extends ConfigFormBase {
       'node',
       'node_metatags',
       'file',
+      'user_fields',
       'users',
     ];
 

@@ -28,6 +28,12 @@ migrate_from_drupal7.import_nodes:
   title: 'Імпорт матеріалів'
   weight: 12
 
+migrate_from_drupal7.import_user_fields:
+  route_name: migrate_from_drupal7.import_user_fields
+  base_route: migrate_from_drupal7.overview
+  title: 'Імпорт полів користувача'
+  weight: 13
+
 migrate_from_drupal7.cron_settings:
   route_name: migrate_from_drupal7.cron_settings
   base_route: migrate_from_drupal7.overview
