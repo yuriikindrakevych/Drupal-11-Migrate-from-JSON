@@ -350,13 +350,14 @@ class ImportContentTypesForm extends FormBase {
 
     // Перевіряємо чи існує field storage.
     $field_storage = FieldStorageConfig::loadByName('node', $field_name);
+    $cardinality = $field_info['cardinality'] == -1 ? -1 : (int) $field_info['cardinality'];
 
     if (!$field_storage) {
       $storage_settings = [
         'field_name' => $field_name,
         'entity_type' => 'node',
         'type' => $field_type,
-        'cardinality' => $field_info['cardinality'] == -1 ? -1 : (int) $field_info['cardinality'],
+        'cardinality' => $cardinality,
       ];
 
       // Для entity_reference (taxonomy_term_reference) встановлюємо target_type.
@@ -368,6 +369,17 @@ class ImportContentTypesForm extends FormBase {
 
       $field_storage = FieldStorageConfig::create($storage_settings);
       $field_storage->save();
+    }
+    else {
+      // Оновлюємо cardinality якщо змінилось.
+      if ($field_storage->getCardinality() != $cardinality) {
+        $field_storage->setCardinality($cardinality);
+        $field_storage->save();
+        \Drupal::logger('migrate_from_drupal7')->info(
+          'Оновлено cardinality для поля @field: @cardinality',
+          ['@field' => $field_name, '@cardinality' => $cardinality == -1 ? 'необмежено' : $cardinality]
+        );
+      }
     }
 
     // Робимо поле перекладним (translatable).
