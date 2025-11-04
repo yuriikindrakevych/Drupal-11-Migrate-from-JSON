@@ -140,9 +140,25 @@ class ImportNodesForm extends FormBase {
         // Завантажуємо ноду з усіма перекладами.
         $nodes_data = $api_client->getNodeById($nid);
 
-        if (empty($nodes_data) || !is_array($nodes_data)) {
+        if (empty($nodes_data)) {
           $context['sandbox']['errors']++;
           $log_service->logError('import', 'node', 'Не вдалося завантажити дані ноди', (string) $nid, []);
+          continue;
+        }
+
+        // Перевіряємо чи це масив масивів чи один масив.
+        // Якщо це один масив (одна нода без перекладів), загортаємо в масив.
+        if (isset($nodes_data['nid']) && !isset($nodes_data[0])) {
+          $nodes_data = [$nodes_data];
+        }
+
+        if (!is_array($nodes_data)) {
+          $context['sandbox']['errors']++;
+          $log_service->logError('import', 'node', 'Некоректний формат даних ноди', (string) $nid, []);
+          \Drupal::logger('migrate_from_drupal7')->error('Некоректний формат даних для nid=@nid: @data', [
+            '@nid' => $nid,
+            '@data' => print_r($nodes_data, TRUE),
+          ]);
           continue;
         }
 
@@ -151,6 +167,11 @@ class ImportNodesForm extends FormBase {
         $translations_data = [];
 
         foreach ($nodes_data as $node_data) {
+          if (!is_array($node_data) || empty($node_data['nid'])) {
+            \Drupal::logger('migrate_from_drupal7')->warning('Пропущено некоректний елемент для nid=@nid', ['@nid' => $nid]);
+            continue;
+          }
+
           $node_nid = $node_data['nid'];
           $node_tnid = $node_data['tnid'] ?? $node_nid;
           $is_translation = !empty($node_tnid) && $node_tnid != $node_nid && $node_tnid != '0';
