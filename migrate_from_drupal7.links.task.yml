@@ -34,6 +34,12 @@ migrate_from_drupal7.import_user_fields:
   title: 'Імпорт полів користувача'
   weight: 13
 
+migrate_from_drupal7.import_users:
+  route_name: migrate_from_drupal7.import_users
+  base_route: migrate_from_drupal7.overview
+  title: 'Імпорт користувачів'
+  weight: 14
+
 migrate_from_drupal7.cron_settings:
   route_name: migrate_from_drupal7.cron_settings
   base_route: migrate_from_drupal7.overview

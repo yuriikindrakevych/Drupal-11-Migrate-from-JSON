@@ -334,4 +334,25 @@ class Drupal7ApiClient {
     }
   }
 
+  /**
+   * Отримати список користувачів з Drupal 7.
+   *
+   * @param int $limit
+   *   Кількість користувачів для отримання (за замовчуванням 50).
+   * @param int $offset
+   *   Зсув для пагінації (за замовчуванням 0).
+   *
+   * @return array|null
+   *   Масив користувачів або NULL у разі помилки.
+   */
+  public function getUsers($limit = 50, $offset = 0) {
+    $params = [
+      'filter' => 'all',
+      'limit' => $limit,
+      'offset' => $offset,
+    ];
+
+    return $this->get('users', $params);
+  }
+
 }
