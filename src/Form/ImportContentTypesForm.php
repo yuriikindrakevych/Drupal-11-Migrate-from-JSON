@@ -439,7 +439,28 @@ class ImportContentTypesForm extends FormBase {
 
     // Робимо поле перекладним.
     if ($field && \Drupal::moduleHandler()->moduleExists('content_translation')) {
-      $field->setThirdPartySetting('content_translation', 'translation_sync', TRUE);
+      // translation_sync має бути масивом, а не булевим значенням!
+      // Для різних типів полів - різні ключі для синхронізації.
+      $sync_settings = [];
+
+      $field_type = $field_storage->getType();
+      if (in_array($field_type, ['string', 'string_long', 'integer', 'decimal', 'float', 'email'])) {
+        $sync_settings = ['value' => 'value'];
+      }
+      elseif (in_array($field_type, ['text_with_summary'])) {
+        $sync_settings = ['value' => 'value', 'format' => 'format', 'summary' => 'summary'];
+      }
+      elseif ($field_type == 'image') {
+        $sync_settings = ['alt' => 'alt', 'title' => 'title'];
+      }
+      elseif ($field_type == 'file') {
+        $sync_settings = ['description' => 'description', 'display' => 'display'];
+      }
+      elseif ($field_type == 'link') {
+        $sync_settings = ['uri' => 'uri', 'title' => 'title', 'options' => 'options'];
+      }
+
+      $field->setThirdPartySetting('content_translation', 'translation_sync', $sync_settings);
       $field->save();
     }
   }
