@@ -117,82 +117,61 @@ class ImportNodesForm extends FormBase {
         return;
       }
 
-      // Зберігаємо список nid для обробки.
-      $context['sandbox']['node_list'] = $all_nodes;
-      $context['sandbox']['total'] = count($all_nodes);
+      // Завантажуємо повні дані для всіх нод і групуємо за tnid.
+      \Drupal::logger('migrate_from_drupal7')->info('Завантажуємо @count нод', ['@count' => count($all_nodes)]);
+      $nodes_by_tnid = [];
+
+      foreach ($all_nodes as $node_preview) {
+        $nid = $node_preview['nid'];
+        $node_data = $api_client->getNodeById($nid);
+
+        if (empty($node_data) || !is_array($node_data)) {
+          continue;
+        }
+
+        $tnid = $node_data['tnid'] ?? $nid;
+        if (!isset($nodes_by_tnid[$tnid])) {
+          $nodes_by_tnid[$tnid] = [];
+        }
+        $nodes_by_tnid[$tnid][] = $node_data;
+      }
+
+      \Drupal::logger('migrate_from_drupal7')->info('Згруповано в @count груп перекладів', ['@count' => count($nodes_by_tnid)]);
+
+      // Зберігаємо список груп для обробки.
+      $context['sandbox']['node_groups'] = array_values($nodes_by_tnid);
+      $context['sandbox']['total'] = count($context['sandbox']['node_groups']);
       $context['sandbox']['progress'] = 0;
       $context['sandbox']['imported'] = 0;
       $context['sandbox']['errors'] = 0;
-      $context['sandbox']['processed_nids'] = []; // Відстежуємо оброблені nid.
     }
 
-    // Обробляємо по 5 nid за раз (кожен nid може мати декілька мов).
-    $batch_size = 5;
-    $node_list_slice = array_slice(
-      $context['sandbox']['node_list'],
+    // Обробляємо по 1 групі за раз.
+    $batch_size = 1;
+    $groups_slice = array_slice(
+      $context['sandbox']['node_groups'],
       $context['sandbox']['progress'],
       $batch_size
     );
 
-    foreach ($node_list_slice as $node_preview) {
-      $nid = $node_preview['nid'];
-
-      \Drupal::logger('migrate_from_drupal7')->info('=== Обробка nid=@nid ===', ['@nid' => $nid]);
-
-      // Перевіряємо чи цей nid вже був оброблений (як частина групи перекладів).
-      if (in_array($nid, $context['sandbox']['processed_nids'])) {
-        \Drupal::logger('migrate_from_drupal7')->info('Пропускаємо nid=@nid - вже оброблено', ['@nid' => $nid]);
-        $context['sandbox']['progress']++;
-        continue;
-      }
-
+    foreach ($groups_slice as $nodes_data) {
       try {
-        // Завантажуємо ноду з усіма перекладами.
-        \Drupal::logger('migrate_from_drupal7')->info('Викликаємо getNodeById(@nid)', ['@nid' => $nid]);
-        $nodes_data = $api_client->getNodeById($nid);
-        \Drupal::logger('migrate_from_drupal7')->info('Отримано @count елементів', ['@count' => is_array($nodes_data) ? count($nodes_data) : 0]);
-
-        if (empty($nodes_data)) {
-          $context['sandbox']['errors']++;
-          $log_service->logError('import', 'node', 'Не вдалося завантажити дані ноди', (string) $nid, []);
-          $context['sandbox']['progress']++;
-          continue;
-        }
-
-        // Перевіряємо чи це масив масивів чи один масив.
-        // Якщо це один масив (одна нода без перекладів), загортаємо в масив.
-        if (isset($nodes_data['nid']) && !isset($nodes_data[0])) {
-          $nodes_data = [$nodes_data];
-        }
-
-        if (!is_array($nodes_data)) {
-          $context['sandbox']['errors']++;
-          $log_service->logError('import', 'node', 'Некоректний формат даних ноди', (string) $nid, []);
-          \Drupal::logger('migrate_from_drupal7')->error('Некоректний формат даних для nid=@nid: @data', [
-            '@nid' => $nid,
-            '@data' => print_r($nodes_data, TRUE),
-          ]);
-          continue;
-        }
+        \Drupal::logger('migrate_from_drupal7')->info('=== Обробка групи з @count нод ===', ['@count' => count($nodes_data)]);
 
         // Розділяємо на оригінал та переклади.
         $original_data = NULL;
         $translations_data = [];
 
         foreach ($nodes_data as $node_data) {
-          if (!is_array($node_data) || empty($node_data['nid'])) {
-            \Drupal::logger('migrate_from_drupal7')->warning('Пропущено некоректний елемент для nid=@nid', ['@nid' => $nid]);
-            continue;
-          }
-
           $node_nid = $node_data['nid'];
           $node_tnid = $node_data['tnid'] ?? $node_nid;
           $is_translation = !empty($node_tnid) && $node_tnid != $node_nid && $node_tnid != '0';
 
-          \Drupal::logger('migrate_from_drupal7')->info('  nid=@nid, tnid=@tnid, is_translation=@trans', [
+          \Drupal::logger('migrate_from_drupal7')->info('  nid=@nid, tnid=@tnid, is_translation=@trans, title=@title', [
             '@nid' => $node_nid,
             '@tnid' => $node_tnid,
             '@trans' => $is_translation ? 'ТАК' : 'НІ',
+            '@title' => $node_data['title'] ?? '',
           ]);
 
           if ($is_translation) {
@@ -237,9 +216,6 @@ class ImportNodesForm extends FormBase {
               ['title' => $original_data['title']]
             );
           }
-          // Додаємо nid оригіналу до оброблених.
-          $context['sandbox']['processed_nids'][] = $original_data['nid'];
-          \Drupal::logger('migrate_from_drupal7')->info('Додано до processed_nids: @nid', ['@nid' => $original_data['nid']]);
         }
 
         // Потім імпортуємо переклади.
@@ -272,15 +248,7 @@ class ImportNodesForm extends FormBase {
               ['title' => $translation_data['title']]
             );
           }
-          // Додаємо nid перекладу до оброблених.
-          $context['sandbox']['processed_nids'][] = $translation_data['nid'];
-          \Drupal::logger('migrate_from_drupal7')->info('Додано до processed_nids: @nid', ['@nid' => $translation_data['nid']]);
         }
-
-        \Drupal::logger('migrate_from_drupal7')->info('=== Завершено обробку nid=@nid. Всього оброблено nid: @list ===', [
-          '@nid' => $nid,
-          '@list' => implode(', ', $context['sandbox']['processed_nids']),
-        ]);
       }
       catch (\Exception $e) {
         $context['sandbox']['errors']++;
@@ -289,8 +257,8 @@ class ImportNodesForm extends FormBase {
         $log_service->logError(
           'import',
           'node',
-          'Помилка імпорту: ' . $e->getMessage(),
-          (string) $nid,
+          'Помилка імпорту групи: ' . $e->getMessage(),
+          '',
           []
         );
       }
