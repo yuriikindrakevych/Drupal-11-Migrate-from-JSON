@@ -12,6 +12,7 @@
 - ✅ Файлів та зображень (автоматичне завантаження)
 - ✅ Полів користувачів
 - ✅ Користувачів з аватарами
+- ✅ Конвертацію Field Collections → Paragraphs (з вкладеністю)
 - ✅ Автоматичний маппінг старих ID в нові ID
 - ✅ Автоматичний імпорт через cron з підтримкою offset
 
@@ -24,6 +25,8 @@
 - **Для багатомовності (опціонально):**
   - Language модуль (ввімкнено за замовчуванням)
   - Content Translation модуль
+- **Для Field Collections → Paragraphs (опціонально):**
+  - Paragraphs модуль (`composer require drupal/paragraphs`)
 
 ## Встановлення
 
@@ -69,6 +72,254 @@
    - Статус Entity Translation
 
 3. **Вимоги:** Для роботи багатомовності на Drupal 11 сайті має бути увімкнений модуль **Content Translation**. Якщо модуль не увімкнено, словники будуть створені без налаштувань багатомовності, про що буде записано попередження в логи.
+
+## Конвертація Field Collections → Paragraphs
+
+Модуль підтримує автоматичну конвертацію Field Collections з Drupal 7 в Paragraphs для Drupal 11. Це дозволяє зберегти всю структуру вкладених полів при міграції.
+
+### Що таке Field Collections і Paragraphs?
+
+- **Field Collections (Drupal 7)** - спосіб групування полів в окремі сутності з можливістю множинних значень та вкладеності
+- **Paragraphs (Drupal 11)** - сучасний аналог Field Collections з покращеною функціональністю та гнучкістю
+
+### Вимоги
+
+Встановіть модуль Paragraphs перед початком конвертації:
+
+```bash
+composer require drupal/paragraphs
+drush en paragraphs
+```
+
+### Послідовність дій
+
+#### Крок 1: Підготовка JSON на Drupal 7
+
+Переконайтеся, що ваш JSON API endpoint повертає дані field collections в такому форматі:
+
+**У відповіді типів контенту** (`/json-api/content-type`):
+```json
+{
+  "encyclopedia": {
+    "type": "encyclopedia",
+    "name": "Енциклопедія",
+    "fields": {
+      "field_exp_comment": {
+        "label": "Коментар експерта",
+        "field_name": "field_exp_comment",
+        "type": "field_collection",
+        "cardinality": "-1",
+        "collection": {
+          "bundle": "field_exp_comment",
+          "fields": {
+            "field_expert_name": {
+              "label": "Ім'я експерта",
+              "type": "text",
+              "cardinality": "1"
+            },
+            "field_expert_photo": {
+              "label": "Фотографія",
+              "type": "image",
+              "cardinality": "1"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+**У відповіді ноди** (`/json-api/node`):
+```json
+{
+  "nid": "244458",
+  "type": "encyclopedia",
+  "title": "Назва статті",
+  "fields": {
+    "field_exp_comment": {
+      "field_type": "field_collection",
+      "target_bundle": "field_exp_comment",
+      "cardinality": -1,
+      "items": [
+        {
+          "item_id": 6696,
+          "delta": 0,
+          "archived": 0,
+          "field_expert_name": {
+            "value": "Енне Бурда"
+          },
+          "field_expert_photo": {
+            "fid": "201017",
+            "filename": "expert.jpg",
+            "uri": "public://expert.jpg",
+            "url": "https://example.com/sites/default/files/expert.jpg",
+            "filemime": "image/jpeg",
+            "alt": "Фото експерта",
+            "title": "Енне Бурда"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+**Важливо:** Кожен item в масиві `items` повинен мати:
+- `item_id` - ID field collection item (для маппінгу)
+- `delta` - порядковий номер для сортування
+- `archived` - 0 або 1 (архівовані items не імпортуються)
+
+#### Крок 2: Створення Paragraph Types
+
+1. Перейдіть до **Управління** → **Конфігурація** → **Створення матеріалів** → **Міграція з Drupal 7**
+2. Відкрийте вкладку **Створення Paragraph Types**
+3. Модуль автоматично знайде всі field collections в ваших типах контенту
+4. Для кожної field collection:
+   - Перегляньте список полів
+   - Оберіть які поля потрібно імпортувати (за замовчуванням вибрані всі)
+   - Зверніть увагу на вкладені field collections (будуть помічені ⚠)
+5. Натисніть **Створити Paragraph Types**
+
+**Результат:** Для кожної field collection буде створено відповідний Paragraph Type з усіма полями.
+
+#### Крок 3: Оновлення типів контенту (вручну)
+
+Після створення Paragraph Types потрібно замінити field collection поля на paragraph поля:
+
+1. Перейдіть до **Структура** → **Типи вмісту**
+2. Виберіть потрібний тип контенту → **Керувати полями**
+3. Для кожного field collection поля:
+   - Видаліть старе поле field_collection (або залиште, якщо планується поступова міграція)
+   - Створіть нове поле типу **Paragraph** з такою ж назвою
+   - Налаштуйте:
+     - **Тип посилання:** Paragraphs
+     - **Дозволені Paragraph Types:** виберіть створений paragraph type
+     - **Кількість значень:** така ж як у field collection
+
+**Приклад:**
+```
+Старе поле: field_exp_comment (Field Collection)
+Нове поле: field_exp_comment (Entity Reference Revisions: Paragraph)
+Дозволені типи: field_exp_comment
+```
+
+#### Крок 4: Імпорт матеріалів
+
+Після створення paragraph types та оновлення типів контенту:
+
+1. Перейдіть до вкладки **Імпорт матеріалів**
+2. Виберіть типи матеріалів з field collections
+3. Натисніть **Імпорт**
+
+**Що відбувається автоматично:**
+- Модуль виявляє field collections в даних нод
+- Створює відповідні Paragraph entities
+- Прив'язує paragraphs до ноди
+- Зберігає маппінг `field_collection_item_id` → `paragraph_id`
+- Обробляє файли, зображення, entity references
+- Зберігає порядок items (delta)
+- Рекурсивно обробляє вкладені field collections
+
+### Підтримувані можливості
+
+✅ **Прості поля:** text, text_long, integer, float, date, list_text
+✅ **Файли та зображення:** з alt, title, description
+✅ **Entity References:** taxonomy terms, nodes (з використанням маппінгу)
+✅ **Вкладені Field Collections:** необмежена глибина вкладеності
+✅ **Множинні значення:** cardinality -1
+✅ **Порядок сортування:** збереження delta
+✅ **Фільтрація:** пропуск archived items
+
+### Структура маппінгу
+
+Після імпорту в таблиці `migrate_from_drupal7_mapping` зберігається:
+
+```
+entity_type: 'field_collection_item'
+old_id: '6696' (item_id з Drupal 7)
+new_id: 123 (paragraph ID в Drupal 11)
+vocabulary_id: 'field_exp_comment' (bundle paragraph type)
+```
+
+### Приклади використання маппінгу
+
+```php
+$mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
+
+// Отримати paragraph ID за field_collection_item_id
+$old_item_id = 6696;
+$paragraph_id = $mapping_service->getNewId('field_collection_item', $old_item_id, 'field_exp_comment');
+
+// Завантажити paragraph
+if ($paragraph_id) {
+  $paragraph = \Drupal\paragraphs\Entity\Paragraph::load($paragraph_id);
+}
+```
+
+### Вкладені Field Collections
+
+Модуль підтримує вкладені field collections (field collection всередині field collection):
+
+```json
+{
+  "field_recipe_steps": {
+    "field_type": "field_collection",
+    "items": [
+      {
+        "item_id": 201,
+        "field_step_title": "Крок 1",
+        "field_ingredients": {
+          "field_type": "field_collection",
+          "items": [
+            {
+              "item_id": 301,
+              "field_ingredient_name": "Мука",
+              "field_ingredient_amount": "500"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+```
+
+Модуль рекурсивно створює paragraph types та paragraphs для всіх рівнів вкладеності.
+
+### Перевірка результату
+
+Після імпорту:
+
+1. Перейдіть до **Структура** → **Paragraph types** - перевірте створені types
+2. Відредагуйте будь-який матеріал - paragraphs мають відображатися коректно
+3. Перевірте **Звіти** → **Останні повідомлення журналу** - логи каналу `migrate_from_drupal7`
+
+### Troubleshooting
+
+**Помилка: "Модуль Paragraphs не встановлено"**
+```bash
+composer require drupal/paragraphs
+drush en paragraphs
+drush cr
+```
+
+**Помилка: "Field [field_name] is unknown"**
+- Переконайтеся, що paragraph type створено
+- Перевірте що поле існує в paragraph type
+- Очистіть кеш: `drush cr`
+
+**Paragraphs не відображаються в ноді**
+- Перевірте що поле в типі контенту має тип "Entity Reference Revisions: Paragraph"
+- Перевірте "Дозволені Paragraph Types" в налаштуваннях поля
+- Перевірте Form Display та View Display
+
+### Файли-приклади
+
+В репозиторії є приклади JSON файлів:
+- `content-type-collection-field.json` - структура типів контенту з field collections
+- `node-with-collection-field.json` - приклад ноди з даними field collections
+- `collections-to-paragraphs.md` - детальна технічна документація
 
 ## Робота з маппінгом ID (Old ID → New ID)
 
@@ -467,6 +718,7 @@ migrate_from_drupal7/
 ✅ Автоматичний імпорт через cron
 ✅ Детальне логування всіх операцій
 ✅ Перевірка поля `changed` для пропуску незмінених сутностей
+✅ Конвертація Field Collections → Paragraphs з підтримкою вкладеності
 
 ## Майбутні можливості
 
