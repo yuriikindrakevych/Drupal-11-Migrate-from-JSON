@@ -472,8 +472,13 @@ class ImportNodesForm extends FormBase {
 
       // 1. Body (text_with_summary) - має value + format + summary.
       if ($field_name === 'body' && isset($first_item['value'])) {
+        $body_value = $first_item['value'];
+
+        // Обробляємо inline зображення в body.
+        $body_value = self::processInlineImages($body_value, $title);
+
         $fields_data[$field_name] = [
-          'value' => $first_item['value'],
+          'value' => $body_value,
           'summary' => $first_item['summary'] ?? '',
           'format' => !empty($first_item['format']) ? $first_item['format'] : 'plain_text',
         ];
@@ -615,6 +620,167 @@ class ImportNodesForm extends FormBase {
     }
 
     return $fields_data;
+  }
+
+  /**
+   * Обробка inline зображень в HTML тексті.
+   *
+   * @param string $html
+   *   HTML текст з body.
+   * @param string $node_title
+   *   Заголовок ноди (для alt тексту).
+   *
+   * @return string
+   *   Оброблений HTML з замінами зображень.
+   */
+  protected static function processInlineImages(string $html, string $node_title): string {
+    if (empty($html) || strpos($html, '<img') === FALSE) {
+      return $html;
+    }
+
+    // Отримуємо базову URL Drupal 7.
+    $config = \Drupal::config('migrate_from_drupal7.settings');
+    $base_url = rtrim($config->get('base_url'), '/');
+
+    if (empty($base_url)) {
+      \Drupal::logger('migrate_from_drupal7')->warning('Базова URL не налаштована для обробки inline зображень');
+      return $html;
+    }
+
+    // Використовуємо DOMDocument для парсингу HTML.
+    libxml_use_internal_errors(TRUE);
+    $dom = new \DOMDocument();
+    $dom->loadHTML('<?xml encoding="utf-8" ?>' . $html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+    libxml_clear_errors();
+
+    $images = $dom->getElementsByTagName('img');
+    $image_counter = 1;
+    $images_to_process = [];
+
+    // Збираємо всі зображення для обробки.
+    foreach ($images as $img) {
+      $images_to_process[] = $img;
+    }
+
+    // Обробляємо кожне зображення.
+    foreach ($images_to_process as $img) {
+      $src = $img->getAttribute('src');
+      if (empty($src)) {
+        continue;
+      }
+
+      // Створюємо абсолютний URL.
+      if (strpos($src, 'http') !== 0) {
+        $src = ltrim($src, '/');
+        $absolute_url = $base_url . '/' . $src;
+      }
+      else {
+        $absolute_url = $src;
+      }
+
+      // Завантажуємо файл.
+      $file = self::downloadInlineImage($absolute_url, $src);
+      if (!$file) {
+        $image_counter++;
+        continue;
+      }
+
+      // Оновлюємо атрибути зображення.
+      $alt = $img->getAttribute('alt');
+      if (empty($alt)) {
+        $alt = "$node_title - фото $image_counter";
+      }
+
+      // Встановлюємо нові атрибути.
+      $img->setAttribute('data-entity-uuid', $file->uuid());
+      $img->setAttribute('data-entity-type', 'file');
+      $img->setAttribute('alt', $alt);
+      $img->setAttribute('loading', 'lazy');
+
+      // Оновлюємо src на новий шлях Drupal 11.
+      $file_uri = $file->getFileUri();
+      $file_url = \Drupal::service('file_url_generator')->generateString($file_uri);
+      $img->setAttribute('src', $file_url);
+
+      \Drupal::logger('migrate_from_drupal7')->info('Оброблено inline зображення: @src → @new', [
+        '@src' => $absolute_url,
+        '@new' => $file_url,
+      ]);
+
+      $image_counter++;
+    }
+
+    // Повертаємо оновлений HTML.
+    $html = $dom->saveHTML();
+
+    // Видаляємо доданий XML declaration.
+    $html = preg_replace('/^<!DOCTYPE.+?>/', '', $html);
+    $html = str_replace(['<html>', '</html>', '<body>', '</body>'], '', $html);
+    $html = trim($html);
+
+    return $html;
+  }
+
+  /**
+   * Завантаження inline зображення з Drupal 7.
+   *
+   * @param string $url
+   *   Абсолютний URL зображення.
+   * @param string $original_src
+   *   Оригінальний src (для визначення імені файлу).
+   *
+   * @return \Drupal\file\FileInterface|null
+   *   File entity або NULL у разі помилки.
+   */
+  protected static function downloadInlineImage(string $url, string $original_src) {
+    try {
+      // Визначаємо ім'я файлу.
+      $filename = basename($original_src);
+
+      // Перевіряємо чи файл вже існує за URL (можна зробити маппінг по URL).
+      // Для простоти завантажуємо в inline-images.
+      $directory = 'public://inline-images';
+      \Drupal::service('file_system')->prepareDirectory($directory, \Drupal\Core\File\FileSystemInterface::CREATE_DIRECTORY);
+
+      $destination = $directory . '/' . $filename;
+
+      // Перевіряємо чи файл вже існує.
+      $existing_files = \Drupal::entityTypeManager()
+        ->getStorage('file')
+        ->loadByProperties(['uri' => $destination]);
+
+      if (!empty($existing_files)) {
+        return reset($existing_files);
+      }
+
+      // Завантажуємо файл.
+      $http_client = \Drupal::httpClient();
+      $response = $http_client->get($url);
+      $file_content = $response->getBody()->getContents();
+
+      // Зберігаємо файл.
+      $file = \Drupal::service('file.repository')->writeData(
+        $file_content,
+        $destination,
+        \Drupal\Core\File\FileSystemInterface::EXISTS_RENAME
+      );
+
+      if ($file) {
+        \Drupal::logger('migrate_from_drupal7')->info('Завантажено inline зображення: @url → @uri', [
+          '@url' => $url,
+          '@uri' => $file->getFileUri(),
+        ]);
+        return $file;
+      }
+    }
+    catch (\Exception $e) {
+      \Drupal::logger('migrate_from_drupal7')->error('Помилка завантаження inline зображення @url: @msg', [
+        '@url' => $url,
+        '@msg' => $e->getMessage(),
+      ]);
+    }
+
+    return NULL;
   }
 
   /**
