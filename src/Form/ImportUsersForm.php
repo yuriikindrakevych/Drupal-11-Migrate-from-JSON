@@ -403,6 +403,160 @@ class ImportUsersForm extends FormBase {
   }
 
   /**
+   * Batch імпорт користувачів для cron з offset.
+   *
+   * @param int $limit
+   *   Кількість користувачів для імпорту.
+   * @param array $context
+   *   Контекст batch.
+   */
+  public static function batchImportUsersForCron($limit, array &$context) {
+    $api_client = \Drupal::service('migrate_from_drupal7.api_client');
+    $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
+    $log_service = \Drupal::service('migrate_from_drupal7.log');
+    $config = \Drupal::configFactory()->getEditable('migrate_from_drupal7.cron');
+
+    if (!isset($context['sandbox']['progress'])) {
+      // Отримуємо поточний offset з конфігурації.
+      $offset = $config->get('users_import_offset') ?? 0;
+
+      // Завантажуємо користувачів з API.
+      $users = $api_client->getUsers($limit, $offset);
+
+      if (empty($users)) {
+        // Користувачів немає - скидаємо offset та завершуємо.
+        $config->set('users_import_offset', 0)->save();
+        $context['finished'] = 1;
+        $context['message'] = t('Користувачі не знайдені. Цикл імпорту завершено.');
+        return;
+      }
+
+      $context['sandbox']['users'] = $users;
+      $context['sandbox']['total'] = count($users);
+      $context['sandbox']['progress'] = 0;
+      $context['sandbox']['imported'] = 0;
+      $context['sandbox']['updated'] = 0;
+      $context['sandbox']['skipped'] = 0;
+      $context['sandbox']['errors'] = 0;
+      $context['sandbox']['offset'] = $offset;
+      $context['sandbox']['limit'] = $limit;
+    }
+
+    // Обробляємо по 1 користувачу за раз.
+    $batch_size = 1;
+    $users_slice = array_slice(
+      $context['sandbox']['users'],
+      $context['sandbox']['progress'],
+      $batch_size
+    );
+
+    foreach ($users_slice as $user_data) {
+      try {
+        $result = self::importSingleUser($user_data);
+        if ($result['success']) {
+          $mapping_service->saveMapping('user', $user_data['uid'], $result['uid']);
+
+          // Підраховуємо статистику.
+          $action = $result['action'] ?? 'import';
+          if ($action === 'import') {
+            $context['sandbox']['imported']++;
+          }
+          elseif ($action === 'update') {
+            $context['sandbox']['updated']++;
+          }
+          elseif ($action === 'skip') {
+            $context['sandbox']['skipped']++;
+          }
+
+          $log_service->logSuccess(
+            $action,
+            'user',
+            $result['message'] ?? 'Імпорт успішний',
+            (string) $result['uid'],
+            [
+              'old_uid' => $user_data['uid'],
+              'name' => $user_data['name'],
+              'mail' => $user_data['mail'],
+            ]
+          );
+        }
+        else {
+          $context['sandbox']['errors']++;
+          $log_service->logError(
+            'import',
+            'user',
+            $result['error'] ?? 'Не вдалося імпортувати',
+            (string) $user_data['uid'],
+            ['name' => $user_data['name']]
+          );
+        }
+      }
+      catch (\Exception $e) {
+        $context['sandbox']['errors']++;
+        $log_service->logError(
+          'import',
+          'user',
+          'Помилка імпорту: ' . $e->getMessage(),
+          (string) $user_data['uid'],
+          []
+        );
+      }
+
+      $context['sandbox']['progress']++;
+    }
+
+    // Перевіряємо чи закінчили обробку всіх користувачів.
+    if ($context['sandbox']['progress'] >= $context['sandbox']['total']) {
+      $context['finished'] = 1;
+
+      // Оновлюємо offset для наступного запуску.
+      $users_count = count($context['sandbox']['users']);
+      $new_offset = $context['sandbox']['offset'] + $users_count;
+
+      // Якщо отримали менше користувачів ніж limit - це останній batch, скидаємо offset.
+      if ($users_count < $context['sandbox']['limit']) {
+        $new_offset = 0;
+        $context['message'] = t('Оброблено @total користувачів. Цикл імпорту завершено, offset скинуто.', [
+          '@total' => $context['sandbox']['total'],
+        ]);
+      }
+      else {
+        $context['message'] = t('Оброблено @total користувачів. Наступний offset: @offset', [
+          '@total' => $context['sandbox']['total'],
+          '@offset' => $new_offset,
+        ]);
+      }
+
+      $config->set('users_import_offset', $new_offset)->save();
+
+      // Логуємо статистику.
+      $log_service->log(
+        'cron',
+        'import',
+        'success',
+        'Cron імпорт користувачів завершено',
+        NULL,
+        [
+          'offset' => $context['sandbox']['offset'],
+          'new_offset' => $new_offset,
+          'imported' => $context['sandbox']['imported'],
+          'updated' => $context['sandbox']['updated'],
+          'skipped' => $context['sandbox']['skipped'],
+          'errors' => $context['sandbox']['errors'],
+        ],
+        0
+      );
+    }
+    else {
+      $context['finished'] = $context['sandbox']['progress'] / $context['sandbox']['total'];
+      $context['message'] = t('Оброблено @current з @total', [
+        '@current' => $context['sandbox']['progress'],
+        '@total' => $context['sandbox']['total'],
+      ]);
+    }
+  }
+
+  /**
    * Batch завершено.
    */
   public static function batchFinished($success, array $results, array $operations) {

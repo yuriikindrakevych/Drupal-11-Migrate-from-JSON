@@ -344,6 +344,7 @@ class Drupal7ApiClient {
    *
    * @return array|null
    *   Масив користувачів або NULL у разі помилки.
+   *   Якщо API повертає об'єкт з ключем 'users', повертається тільки масив користувачів.
    */
   public function getUsers($limit = 50, $offset = 0) {
     $params = [
@@ -352,7 +353,14 @@ class Drupal7ApiClient {
       'offset' => $offset,
     ];
 
-    return $this->get('users', $params);
+    $data = $this->get('users', $params);
+
+    // Якщо API повертає об'єкт з ключем 'users', витягуємо тільки користувачів.
+    if (is_array($data) && isset($data['users'])) {
+      return $data['users'];
+    }
+
+    return $data;
   }
 
 }

@@ -42,11 +42,13 @@ function migrate_from_drupal7_cron() {
   $interval = $config->get('interval') ?? 'daily';
   $last_run = $config->get('last_run');
   $vocabularies = $config->get('vocabularies') ?? [];
+  $import_users = $config->get('import_users') ?? FALSE;
+  $users_batch_size = $config->get('users_batch_size') ?? 100;
   $node_types = $config->get('node_types') ?? [];
   $skip_unchanged = $config->get('skip_unchanged') ?? TRUE;
 
   // Якщо нічого не вибрано - виходимо.
-  if (empty($vocabularies) && empty($node_types)) {
+  if (empty($vocabularies) && !$import_users && empty($node_types)) {
     return;
   }
 
@@ -95,6 +97,8 @@ function migrate_from_drupal7_cron() {
     NULL,
     [
       'vocabularies' => $vocabularies,
+      'import_users' => $import_users,
+      'users_batch_size' => $users_batch_size,
       'node_types' => $node_types,
       'interval' => $interval,
     ],
@@ -109,7 +113,9 @@ function migrate_from_drupal7_cron() {
     'progressive' => FALSE,  // Запускаємо в фоні без UI
   ];
 
-  // Додаємо імпорт словників.
+  // Послідовність імпорту: 1. Терміни → 2. Користувачі → 3. Матеріали (nodes)
+
+  // 1. Додаємо імпорт термінів таксономій.
   foreach ($vocabularies as $vocabulary_id) {
     if (!empty($vocabulary_id)) {
       $batch['operations'][] = [
@@ -119,7 +125,15 @@ function migrate_from_drupal7_cron() {
     }
   }
 
-  // Додаємо імпорт матеріалів.
+  // 2. Додаємо імпорт користувачів (з offset для поступового обходу всіх користувачів).
+  if ($import_users) {
+    $batch['operations'][] = [
+      '\Drupal\migrate_from_drupal7\Form\ImportUsersForm::batchImportUsersForCron',
+      [$users_batch_size],
+    ];
+  }
+
+  // 3. Додаємо імпорт матеріалів.
   foreach ($node_types as $node_type) {
     if (!empty($node_type)) {
       $batch['operations'][] = [

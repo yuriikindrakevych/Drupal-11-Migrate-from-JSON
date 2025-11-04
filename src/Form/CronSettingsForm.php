@@ -138,6 +138,39 @@ class CronSettingsForm extends ConfigFormBase {
       }
     }
 
+    // Налаштування користувачів.
+    $form['users'] = [
+      '#type' => 'details',
+      '#title' => $this->t('Користувачі для імпорту'),
+      '#open' => TRUE,
+      '#states' => [
+        'visible' => [
+          ':input[name="enabled"]' => ['checked' => TRUE],
+        ],
+      ],
+    ];
+
+    $form['users']['import_users'] = [
+      '#type' => 'checkbox',
+      '#title' => $this->t('Імпортувати користувачів'),
+      '#default_value' => $config->get('import_users') ?? FALSE,
+      '#description' => $this->t('Імпортувати/оновлювати користувачів з Drupal 7 при кожному запуску cron.'),
+    ];
+
+    $form['users']['users_batch_size'] = [
+      '#type' => 'number',
+      '#title' => $this->t('Кількість користувачів за раз'),
+      '#default_value' => $config->get('users_batch_size') ?? 100,
+      '#min' => 1,
+      '#max' => 500,
+      '#description' => $this->t('Скільки користувачів імпортувати за один запуск cron. Рекомендовано: 100-200.'),
+      '#states' => [
+        'visible' => [
+          ':input[name="import_users"]' => ['checked' => TRUE],
+        ],
+      ],
+    ];
+
     // Налаштування матеріалів.
     $form['nodes'] = [
       '#type' => 'details',
@@ -223,6 +256,8 @@ class CronSettingsForm extends ConfigFormBase {
       ->set('run_hour', (int) $form_state->getValue('run_hour'))
       ->set('interval', $form_state->getValue('interval'))
       ->set('vocabularies', array_filter($form_state->getValue('vocabularies', [])))
+      ->set('import_users', (bool) $form_state->getValue('import_users'))
+      ->set('users_batch_size', (int) $form_state->getValue('users_batch_size'))
       ->set('node_types', array_filter($form_state->getValue('node_types', [])))
       ->set('skip_unchanged', (bool) $form_state->getValue('skip_unchanged'))
       ->save();
