@@ -427,6 +427,22 @@ class ImportContentTypesForm extends FormBase {
         }
       }
 
+      // Для image та file полів налаштовуємо дозволені розширення.
+      if (in_array($field_type, ['image', 'file']) && !empty($field_info['allowed'])) {
+        if (!isset($field_settings['settings'])) {
+          $field_settings['settings'] = [];
+        }
+
+        // Перетворюємо масив розширень в рядок через пробіл.
+        $extensions = is_array($field_info['allowed']) ? implode(' ', $field_info['allowed']) : $field_info['allowed'];
+        $field_settings['settings']['file_extensions'] = $extensions;
+
+        \Drupal::logger('migrate_from_drupal7')->info(
+          'Налаштовано дозволені розширення для поля @field: @extensions',
+          ['@field' => $field_name, '@extensions' => $extensions]
+        );
+      }
+
       $field = FieldConfig::create($field_settings);
       $field->save();
 
