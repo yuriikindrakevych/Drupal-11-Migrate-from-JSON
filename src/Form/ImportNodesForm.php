@@ -123,6 +123,7 @@ class ImportNodesForm extends FormBase {
       $context['sandbox']['progress'] = 0;
       $context['sandbox']['imported'] = 0;
       $context['sandbox']['errors'] = 0;
+      $context['sandbox']['processed_nids'] = []; // Відстежуємо оброблені nid.
     }
 
     // Обробляємо по 5 nid за раз (кожен nid може мати декілька мов).
@@ -136,6 +137,13 @@ class ImportNodesForm extends FormBase {
     foreach ($node_list_slice as $node_preview) {
       $nid = $node_preview['nid'];
 
+      // Перевіряємо чи цей nid вже був оброблений (як частина групи перекладів).
+      if (in_array($nid, $context['sandbox']['processed_nids'])) {
+        \Drupal::logger('migrate_from_drupal7')->info('Пропускаємо nid=@nid - вже оброблено', ['@nid' => $nid]);
+        $context['sandbox']['progress']++;
+        continue;
+      }
+
       try {
         // Завантажуємо ноду з усіма перекладами.
         $nodes_data = $api_client->getNodeById($nid);
@@ -143,6 +151,7 @@ class ImportNodesForm extends FormBase {
         if (empty($nodes_data)) {
           $context['sandbox']['errors']++;
           $log_service->logError('import', 'node', 'Не вдалося завантажити дані ноди', (string) $nid, []);
+          $context['sandbox']['progress']++;
           continue;
         }
 
@@ -213,6 +222,8 @@ class ImportNodesForm extends FormBase {
               ['title' => $original_data['title']]
             );
           }
+          // Додаємо nid оригіналу до оброблених.
+          $context['sandbox']['processed_nids'][] = $original_data['nid'];
         }
 
         // Потім імпортуємо переклади.
@@ -244,6 +255,8 @@ class ImportNodesForm extends FormBase {
               ['title' => $translation_data['title']]
             );
           }
+          // Додаємо nid перекладу до оброблених.
+          $context['sandbox']['processed_nids'][] = $translation_data['nid'];
         }
       }
       catch (\Exception $e) {
