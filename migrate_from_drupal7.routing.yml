@@ -22,6 +22,14 @@ migrate_from_drupal7.import_content_types:
   requirements:
     _permission: 'administer site configuration'
 
+migrate_from_drupal7.import_paragraph_types:
+  path: '/admin/config/content/migrate-drupal7/import-paragraph-types'
+  defaults:
+    _form: '\Drupal\migrate_from_drupal7\Form\ImportParagraphTypesForm'
+    _title: 'Створення Paragraph Types (з Field Collections)'
+  requirements:
+    _permission: 'administer site configuration'
+
 migrate_from_drupal7.import_terms:
   path: '/admin/config/content/migrate-drupal7/import-terms'
   defaults:

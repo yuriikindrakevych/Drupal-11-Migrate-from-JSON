@@ -10,6 +10,7 @@ use Drupal\migrate_from_drupal7\Service\LogService;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\node\Entity\Node;
+use Drupal\paragraphs\Entity\Paragraph;
 
 /**
  * Форма для імпорту матеріалів.
@@ -558,7 +559,14 @@ class ImportNodesForm extends FormBase {
           $fields_data[$field_name] = $values;
         }
       }
-      // 8. Інші типи - пропускаємо.
+      // 8. Field Collections → Paragraphs - має field_type + items.
+      elseif (is_array($field_values) && isset($field_values['field_type']) && $field_values['field_type'] === 'field_collection') {
+        $paragraphs = self::convertFieldCollectionsToParagraphs($field_values, $title, $bundle);
+        if (!empty($paragraphs)) {
+          $fields_data[$field_name] = $paragraphs;
+        }
+      }
+      // 9. Інші типи - пропускаємо.
       else {
         // Невідомий тип поля, пропускаємо.
       }
@@ -827,6 +835,183 @@ class ImportNodesForm extends FormBase {
         // Не вдалося встановити поле.
       }
     }
+  }
+
+  /**
+   * Конвертація Field Collections в Paragraphs.
+   *
+   * @param array $field_collection_data
+   *   Дані field collection з JSON (має items array).
+   * @param string $node_title
+   *   Заголовок ноди (для alt тексту зображень).
+   * @param string $bundle
+   *   Bundle ноди (для шляху файлів).
+   *
+   * @return array
+   *   Масив paragraph references для прив'язки до ноди.
+   */
+  protected static function convertFieldCollectionsToParagraphs(array $field_collection_data, string $node_title, string $bundle): array {
+    if (empty($field_collection_data['items']) || !is_array($field_collection_data['items'])) {
+      return [];
+    }
+
+    $paragraph_references = [];
+    $target_bundle = $field_collection_data['target_bundle'] ?? NULL;
+
+    // Сортуємо items за delta.
+    $items = $field_collection_data['items'];
+    usort($items, function($a, $b) {
+      return ($a['delta'] ?? 0) <=> ($b['delta'] ?? 0);
+    });
+
+    foreach ($items as $item) {
+      // Пропускаємо архівовані items.
+      if (!empty($item['archived'])) {
+        continue;
+      }
+
+      try {
+        $paragraph = self::createParagraphFromItem($item, $target_bundle, $node_title, $bundle);
+        if ($paragraph) {
+          $paragraph_references[] = [
+            'target_id' => $paragraph->id(),
+            'target_revision_id' => $paragraph->getRevisionId(),
+          ];
+
+          // Зберігаємо маппінг field_collection_item_id → paragraph_id.
+          if (!empty($item['item_id'])) {
+            $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
+            $mapping_service->saveMapping(
+              'field_collection_item',
+              $item['item_id'],
+              $paragraph->id(),
+              $target_bundle
+            );
+          }
+        }
+      }
+      catch (\Exception $e) {
+        \Drupal::logger('migrate_from_drupal7')->error(
+          'Помилка створення paragraph: @message',
+          ['@message' => $e->getMessage()]
+        );
+      }
+    }
+
+    return $paragraph_references;
+  }
+
+  /**
+   * Створити Paragraph з field collection item.
+   *
+   * @param array $item
+   *   Field collection item data.
+   * @param string $paragraph_type
+   *   Тип paragraph.
+   * @param string $node_title
+   *   Заголовок ноди.
+   * @param string $bundle
+   *   Bundle ноди.
+   *
+   * @return \Drupal\paragraphs\Entity\Paragraph|null
+   *   Створений paragraph або NULL.
+   */
+  protected static function createParagraphFromItem(array $item, string $paragraph_type, string $node_title, string $bundle): ?Paragraph {
+    if (empty($paragraph_type)) {
+      return NULL;
+    }
+
+    // Створюємо paragraph.
+    $paragraph = Paragraph::create([
+      'type' => $paragraph_type,
+    ]);
+
+    $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
+
+    // Встановлюємо всі поля з item.
+    foreach ($item as $field_name => $value) {
+      // Пропускаємо службові поля.
+      if (in_array($field_name, ['item_id', 'delta', 'archived', 'bundle'])) {
+        continue;
+      }
+
+      // Перевіряємо чи paragraph має це поле.
+      if (!$paragraph->hasField($field_name)) {
+        continue;
+      }
+
+      try {
+        // Перевіряємо чи це вкладена field collection.
+        if (is_array($value) && isset($value['field_type']) && $value['field_type'] === 'field_collection') {
+          // Рекурсивна обробка вкладених field collections.
+          $nested_paragraphs = self::convertFieldCollectionsToParagraphs($value, $node_title, $bundle);
+          if (!empty($nested_paragraphs)) {
+            $paragraph->set($field_name, $nested_paragraphs);
+          }
+        }
+        // Обробка файлів/зображень.
+        elseif (is_array($value) && isset($value['fid']) && isset($value['filename'])) {
+          $file = self::downloadFile($value, $field_name, $bundle);
+          if ($file) {
+            // Перевіряємо чи це зображення.
+            if (isset($value['filemime']) && strpos($value['filemime'], 'image/') === 0) {
+              $alt = $value['alt'] ?? $node_title;
+              $paragraph->set($field_name, [
+                'target_id' => $file->id(),
+                'alt' => $alt,
+                'title' => $value['title'] ?? '',
+              ]);
+            }
+            else {
+              $paragraph->set($field_name, [
+                'target_id' => $file->id(),
+                'description' => $value['description'] ?? '',
+                'display' => $value['display'] ?? 1,
+              ]);
+            }
+          }
+        }
+        // Обробка taxonomy term reference.
+        elseif (is_array($value) && isset($value['tid'])) {
+          $new_tid = $mapping_service->getNewId('taxonomy_term', $value['tid']);
+          if ($new_tid) {
+            $paragraph->set($field_name, ['target_id' => $new_tid]);
+          }
+        }
+        // Обробка node reference.
+        elseif (is_array($value) && isset($value['nid'])) {
+          $new_nid = $mapping_service->getNewId('node', $value['nid']);
+          if ($new_nid) {
+            $paragraph->set($field_name, ['target_id' => $new_nid]);
+          }
+        }
+        // Обробка текстових полів з форматом.
+        elseif (is_array($value) && isset($value['value'])) {
+          if (isset($value['format'])) {
+            $paragraph->set($field_name, [
+              'value' => $value['value'],
+              'format' => !empty($value['format']) ? $value['format'] : 'plain_text',
+            ]);
+          }
+          else {
+            $paragraph->set($field_name, $value['value']);
+          }
+        }
+        // Прості значення.
+        else {
+          $paragraph->set($field_name, $value);
+        }
+      }
+      catch (\Exception $e) {
+        \Drupal::logger('migrate_from_drupal7')->error(
+          'Помилка встановлення поля @field в paragraph: @message',
+          ['@field' => $field_name, '@message' => $e->getMessage()]
+        );
+      }
+    }
+
+    $paragraph->save();
+    return $paragraph;
   }
 
   /**

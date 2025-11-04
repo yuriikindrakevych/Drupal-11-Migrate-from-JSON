@@ -16,6 +16,12 @@ migrate_from_drupal7.import_content_types:
   title: 'Імпорт типів матеріалів та полів'
   weight: 5
 
+migrate_from_drupal7.import_paragraph_types:
+  route_name: migrate_from_drupal7.import_paragraph_types
+  base_route: migrate_from_drupal7.overview
+  title: 'Створення Paragraph Types'
+  weight: 7
+
 migrate_from_drupal7.import_terms:
   route_name: migrate_from_drupal7.import_terms
   base_route: migrate_from_drupal7.overview

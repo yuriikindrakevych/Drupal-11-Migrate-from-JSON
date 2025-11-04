@@ -1,0 +1,411 @@
+{
+  "nid": "244458",
+  "tnid": "0",
+  "vid": "244458",
+  "type": "encyclopedia",
+  "language": "uk",
+  "title": "75 років шиття: особисті історії з німецької редакції BURDA STYLE",
+  "uid": "10",
+  "status": "1",
+  "created": "1759352840",
+  "changed": "1759474642",
+  "comment": "2",
+  "promote": "0",
+  "sticky": "0",
+  "fields": {
+    "field_enc_photo": [
+      {
+        "fid": "201015",
+        "uid": "1",
+        "filename": "yuviley_10-2025_burdastyle_1.jpg",
+        "uri": "public://yuviley_10-2025_burdastyle_1.jpg",
+        "filemime": "image/jpeg",
+        "filesize": "330737",
+        "status": "1",
+        "timestamp": "1759338440",
+        "rdf_mapping": [],
+        "alt": "75 років шиття: особисті історії з німецької редакції BURDA STYLE",
+        "title": "75 років шиття: особисті історії з німецької редакції BURDA STYLE",
+        "width": "580",
+        "height": "580",
+        "absolute_url": "https://burdastyle.ua/sites/default/files/yuviley_10-2025_burdastyle_1.jpg",
+        "absolute_path": "/home/www/burdastyle/public_html/sites/default/files/yuviley_10-2025_burdastyle_1.jpg",
+        "mime": "image/jpeg"
+      }
+    ],
+    "field_enc_text": {
+      "value": "\u003Cp class=\"rtejustify\"\u003E\u003Cstrong\u003EПерший номер журналу Burda Moden вийшов у Німеччині в 1950-му році. Наприкінці 1980-х років тираж перевищив 4 мільйони примірників по всьому світу, що зробило його одним із найпопулярніших модних журналів у світі.\u003C/strong\u003E\u003C/p\u003E\r\n\r\n\u003Cp\u003E&nbsp;\u003C/p\u003E\r\n\r\n\u003Cp style=\"text-align:center\"\u003E\u003Cimg alt=\"\" height=\"718\" src=\"/sites/default/files/inline/images/yuviley_10-2025_burdastyle_2.jpg\" width=\"830\" /\u003E\u003C/p\u003E\r\n\r\n\u003Cp\u003E&nbsp;\u003C/p\u003E\r\n\r\n\u003Cp class=\"rtecenter\"\u003E\u003Ca href=\"https://burdastyle.ua/news/burda-style-zhurnal-yakyy-pidkoryv-uves-svit\"\u003EBurda Style - журнал, який підкорив увесь світ!\u003C/a\u003E\u003C/p\u003E\r\n",
+      "format": "full_html",
+      "safe_value": "\u003Cp class=\"rtejustify\"\u003E\u003Cstrong\u003EПерший номер журналу Burda Moden вийшов у Німеччині в 1950-му році. Наприкінці 1980-х років тираж перевищив 4 мільйони примірників по всьому світу, що зробило його одним із найпопулярніших модних журналів у світі.\u003C/strong\u003E\u003C/p\u003E\n\u003Cp\u003E \u003C/p\u003E\n\u003Cp style=\"text-align:center\"\u003E\u003Cimg alt=\"\" height=\"718\" src=\"/sites/default/files/inline/images/yuviley_10-2025_burdastyle_2.jpg\" width=\"830\" /\u003E\u003C/p\u003E\n\u003Cp\u003E \u003C/p\u003E\n\u003Cp class=\"rtecenter\"\u003E\u003Ca href=\"https://burdastyle.ua/news/burda-style-zhurnal-yakyy-pidkoryv-uves-svit\"\u003EBurda Style - журнал, який підкорив увесь світ!\u003C/a\u003E\u003C/p\u003E\n"
+    },
+    "field_exp_comment": {
+      "field_type": "field_collection",
+      "target_bundle": "field_exp_comment",
+      "cardinality": "-1",
+      "items": [
+        {
+          "item_id": 6696,
+          "delta": 0,
+          "archived": 0,
+          "field_expert_name": {
+            "value": "Енне Бурда",
+            "format": null,
+            "safe_value": "Енне Бурда"
+          },
+          "field_expert_photo": {
+            "fid": "201017",
+            "uid": "1",
+            "filename": "enne_burda.jpg",
+            "uri": "public://enne_burda.jpg",
+            "filemime": "image/jpeg",
+            "filesize": "128403",
+            "status": "1",
+            "timestamp": "1759338440",
+            "rdf_mapping": [],
+            "alt": "",
+            "title": "",
+            "width": "500",
+            "height": "500",
+            "absolute_url": "https://burdastyle.ua/sites/default/files/enne_burda.jpg",
+            "absolute_path": "/home/www/burdastyle/public_html/sites/default/files/enne_burda.jpg",
+            "mime": "image/jpeg",
+            "url": "https://burdastyle.ua/sites/default/files/enne_burda.jpg"
+          },
+          "field_expert_about": {
+            "value": "засновниця журналу\r\n",
+            "format": null,
+            "safe_value": "засновниця журналу\r\n"
+          },
+          "field_expert_comment": {
+            "value": "\u003Cp\u003E&nbsp;\u003C/p\u003E\r\n\r\n\u003Cp\u003EМода - це мова, яку розуміють усі, незалежно від походження чи освіти.\u003C/p\u003E\r\n\r\n\u003Cp\u003E&nbsp;\u003C/p\u003E\r\n",
+            "format": "full_html",
+            "safe_value": "\u003Cp\u003E \u003C/p\u003E\n\u003Cp\u003EМода - це мова, яку розуміють усі, незалежно від походження чи освіти.\u003C/p\u003E\n\u003Cp\u003E \u003C/p\u003E\n"
+          },
+          "field_expert_text": {
+            "value": "\u003Cp class=\"rtecenter\"\u003E\u003Ca href=\"https://burdastyle.ua/encyclopedia/gid-po-stylyu/svit-mody-v-oblychchyah/modna-imperiya-enne-burda-novyy-pochatok\"\u003EМодна імперія Енне Бурда: новий початок\u003C/a\u003E\u003C/p\u003E\r\n",
+            "format": "full_html",
+            "safe_value": "\u003Cp class=\"rtecenter\"\u003E\u003Ca href=\"https://burdastyle.ua/encyclopedia/gid-po-stylyu/svit-mody-v-oblychchyah/modna-imperiya-enne-burda-novyy-pochatok\"\u003EМодна імперія Енне Бурда: новий початок\u003C/a\u003E\u003C/p\u003E\n"
+          }
+        },
+        {
+          "item_id": 6697,
+          "delta": 1,
+          "archived": 0,
+          "field_expert_name": {
+            "value": "Амелі Хаас",
+            "format": null,
+            "safe_value": "Амелі Хаас"
+          },
+          "field_expert_photo": {
+            "fid": "201018",
+            "uid": "1",
+            "filename": "ameli_haas.jpg",
+            "uri": "public://ameli_haas.jpg",
+            "filemime": "image/jpeg",
+            "filesize": "50386",
+            "status": "1",
+            "timestamp": "1759338440",
+            "rdf_mapping": [],
+            "alt": "",
+            "title": "",
+            "width": "350",
+            "height": "350",
+            "absolute_url": "https://burdastyle.ua/sites/default/files/ameli_haas.jpg",
+            "absolute_path": "/home/www/burdastyle/public_html/sites/default/files/ameli_haas.jpg",
+            "mime": "image/jpeg",
+            "url": "https://burdastyle.ua/sites/default/files/ameli_haas.jpg"
+          },
+          "field_expert_about": {
+            "value": "стажерка редакції",
+            "format": null,
+            "safe_value": "стажерка редакції"
+          },
+          "field_expert_comment": {
+            "value": "\u003Cp\u003E\u003Cstrong\u003EЩАСТЯ ШИТИ\u003C/strong\u003E\u003C/p\u003E\r\n\r\n\u003Cp class=\"rtejustify\"\u003EМоїм особистим найяскравішим враженням від burda style стало те, що я відкрила для себе світ шиття. За допомогою викрійки burda style я вперше сама собі пошила одяг, і це було чудове відчуття &mdash; тримати в руках щось зроблене власноруч!\u003C/p\u003E\r\n\r\n\u003Cp\u003E&nbsp;\u003C/p\u003E\r\n\r\n\u003Cp style=\"text-align:center\"\u003E\u003Cimg alt=\"\" height=\"400\" src=\"/sites/default/files/inline/images/yuviley_10-2025_burdastyle_4.jpg\" width=\"300\" /\u003E\u003C/p\u003E\r\n",
+            "format": "full_html",
+            "safe_value": "\u003Cp\u003E\u003Cstrong\u003EЩАСТЯ ШИТИ\u003C/strong\u003E\u003C/p\u003E\n\u003Cp class=\"rtejustify\"\u003EМоїм особистим найяскравішим враженням від burda style стало те, що я відкрила для себе світ шиття. За допомогою викрійки burda style я вперше сама собі пошила одяг, і це було чудове відчуття — тримати в руках щось зроблене власноруч!\u003C/p\u003E\n\u003Cp\u003E \u003C/p\u003E\n\u003Cp style=\"text-align:center\"\u003E\u003Cimg alt=\"\" height=\"400\" src=\"/sites/default/files/inline/images/yuviley_10-2025_burdastyle_4.jpg\" width=\"300\" /\u003E\u003C/p\u003E\n"
+          },
+          "field_expert_text": {
+            "value": "\u003Cp class=\"rtecenter\"\u003E\u003Ca href=\"https://burdastyle.ua/news/velyka-simya-burda\"\u003EВелика сім&rsquo;я Burda\u003C/a\u003E\u003C/p\u003E\r\n",
+            "format": "full_html",
+            "safe_value": "\u003Cp class=\"rtecenter\"\u003E\u003Ca href=\"https://burdastyle.ua/news/velyka-simya-burda\"\u003EВелика сім’я Burda\u003C/a\u003E\u003C/p\u003E\n"
+          }
+        },
+        {
+          "item_id": 6698,
+          "delta": 2,
+          "archived": 0,
+          "field_expert_name": {
+            "value": "Сабіна Маулен",
+            "format": null,
+            "safe_value": "Сабіна Маулен"
+          },
+          "field_expert_photo": {
+            "fid": "201020",
+            "uid": "1",
+            "filename": "sabine_maulen.jpg",
+            "uri": "public://sabine_maulen.jpg",
+            "filemime": "image/jpeg",
+            "filesize": "116720",
+            "status": "1",
+            "timestamp": "1759338857",
+            "rdf_mapping": [],
+            "alt": "",
+            "title": "",
+            "width": "500",
+            "height": "500",
+            "absolute_url": "https://burdastyle.ua/sites/default/files/sabine_maulen.jpg",
+            "absolute_path": "/home/www/burdastyle/public_html/sites/default/files/sabine_maulen.jpg",
+            "mime": "image/jpeg",
+            "url": "https://burdastyle.ua/sites/default/files/sabine_maulen.jpg"
+          },
+          "field_expert_about": {
+            "value": "fashion-директорка",
+            "format": null,
+            "safe_value": "fashion-директорка"
+          },
+          "field_expert_comment": {
+            "value": "\u003Cp\u003E\u003Cstrong\u003EПРОФЕСІЯ З ПРИСТРАСТЮ\u003C/strong\u003E\u003C/p\u003E\r\n\r\n\u003Cp class=\"rtejustify\"\u003EБільше десяти років я працюю в компанії burda на своїй омріяній роботі. Як дипломований дизайнер одягу та fashion-директор, я супроводжую весь процес створення &mdash; від першої ідеї до готового образу на фотомоделі.\u003C/p\u003E\r\n\r\n\u003Cp class=\"rtejustify\"\u003E&nbsp;\u003C/p\u003E\r\n\r\n\u003Cp style=\"text-align:center\"\u003E\u003Cimg alt=\"\" height=\"400\" src=\"/sites/default/files/inline/images/yuviley_10-2025_burdastyle_10.jpg\" width=\"300\" /\u003E\u003C/p\u003E\r\n",
+            "format": "full_html",
+            "safe_value": "\u003Cp\u003E\u003Cstrong\u003EПРОФЕСІЯ З ПРИСТРАСТЮ\u003C/strong\u003E\u003C/p\u003E\n\u003Cp class=\"rtejustify\"\u003EБільше десяти років я працюю в компанії burda на своїй омріяній роботі. Як дипломований дизайнер одягу та fashion-директор, я супроводжую весь процес створення — від першої ідеї до готового образу на фотомоделі.\u003C/p\u003E\n\u003Cp class=\"rtejustify\"\u003E \u003C/p\u003E\n\u003Cp style=\"text-align:center\"\u003E\u003Cimg alt=\"\" height=\"400\" src=\"/sites/default/files/inline/images/yuviley_10-2025_burdastyle_10.jpg\" width=\"300\" /\u003E\u003C/p\u003E\n"
+          },
+          "field_expert_text": {
+            "value": "\u003Cp class=\"rtecenter\"\u003E\u003Ca href=\"https://burdastyle.ua/news/vid-poshytoyi-modeli-do-zhurnalu-burda-style\"\u003EВід пошитої моделі до журналу Burda Style\u003C/a\u003E\u003C/p\u003E\r\n",
+            "format": "full_html",
+            "safe_value": "\u003Cp class=\"rtecenter\"\u003E\u003Ca href=\"https://burdastyle.ua/news/vid-poshytoyi-modeli-do-zhurnalu-burda-style\"\u003EВід пошитої моделі до журналу Burda Style\u003C/a\u003E\u003C/p\u003E\n"
+          }
+        },
+        {
+          "item_id": 6699,
+          "delta": 3,
+          "archived": 0,
+          "field_expert_name": {
+            "value": "Ірина Дікс",
+            "format": null,
+            "safe_value": "Ірина Дікс"
+          },
+          "field_expert_photo": {
+            "fid": "201021",
+            "uid": "1",
+            "filename": "iryna_diks.jpg",
+            "uri": "public://iryna_diks.jpg",
+            "filemime": "image/jpeg",
+            "filesize": "91729",
+            "status": "1",
+            "timestamp": "1759338857",
+            "rdf_mapping": [],
+            "alt": "",
+            "title": "",
+            "width": "500",
+            "height": "500",
+            "absolute_url": "https://burdastyle.ua/sites/default/files/iryna_diks.jpg",
+            "absolute_path": "/home/www/burdastyle/public_html/sites/default/files/iryna_diks.jpg",
+            "mime": "image/jpeg",
+            "url": "https://burdastyle.ua/sites/default/files/iryna_diks.jpg"
+          },
+          "field_expert_about": {
+            "value": "бренд-менеджерка",
+            "format": null,
+            "safe_value": "бренд-менеджерка"
+          },
+          "field_expert_comment": {
+            "value": "\u003Cp\u003E\u003Cstrong\u003EЗРОБЛЕНО МНОЮ\u003C/strong\u003E\u003C/p\u003E\r\n\r\n\u003Cp class=\"rtejustify\"\u003EЩе в дитинстві я мріяла сама шити собі одяг. Під час карантину 2020 року я нарешті почала це робити. Сьогодні 80 % мого гардероба пошито власними руками. Особливо ціную у викрійках burda те, що їх легко підігнати під мій зріст 1,75 м. Проєктом мого серця є \u003Ca href=\"https://burdastyle.ua/models/suknya-byustye-z-velykym-bantom\"\u003Eсукня з burda style 5/2023\u003C/a\u003E &mdash; красива, зручна, ідеально сидить на моїй фігурі, &mdash; яку я поєднала із \u003Ca href=\"https://burdastyle.ua/models/zhaket-iz-bukle-v-styli-shanel\"\u003Eжакетом із журналу 8/2023\u003C/a\u003E та одягла як гостя на весіллі.\u003C/p\u003E\r\n\r\n\u003Cp class=\"rtejustify\"\u003E&nbsp;\u003C/p\u003E\r\n\r\n\u003Cp style=\"text-align:center\"\u003E\u003Cimg alt=\"\" height=\"400\" src=\"/sites/default/files/inline/images/yuviley_10-2025_burdastyle_5.jpg\" width=\"300\" /\u003E\u003C/p\u003E\r\n",
+            "format": "full_html",
+            "safe_value": "\u003Cp\u003E\u003Cstrong\u003EЗРОБЛЕНО МНОЮ\u003C/strong\u003E\u003C/p\u003E\n\u003Cp class=\"rtejustify\"\u003EЩе в дитинстві я мріяла сама шити собі одяг. Під час карантину 2020 року я нарешті почала це робити. Сьогодні 80 % мого гардероба пошито власними руками. Особливо ціную у викрійках burda те, що їх легко підігнати під мій зріст 1,75 м. Проєктом мого серця є \u003Ca href=\"https://burdastyle.ua/models/suknya-byustye-z-velykym-bantom\"\u003Eсукня з burda style 5/2023\u003C/a\u003E — красива, зручна, ідеально сидить на моїй фігурі, — яку я поєднала із \u003Ca href=\"https://burdastyle.ua/models/zhaket-iz-bukle-v-styli-shanel\"\u003Eжакетом із журналу 8/2023\u003C/a\u003E та одягла як гостя на весіллі.\u003C/p\u003E\n\u003Cp class=\"rtejustify\"\u003E \u003C/p\u003E\n\u003Cp style=\"text-align:center\"\u003E\u003Cimg alt=\"\" height=\"400\" src=\"/sites/default/files/inline/images/yuviley_10-2025_burdastyle_5.jpg\" width=\"300\" /\u003E\u003C/p\u003E\n"
+          },
+          "field_expert_text": null
+        },
+        {
+          "item_id": 6700,
+          "delta": 4,
+          "archived": 0,
+          "field_expert_name": {
+            "value": "Юлія Зіпп",
+            "format": null,
+            "safe_value": "Юлія Зіпп"
+          },
+          "field_expert_photo": {
+            "fid": "201023",
+            "uid": "1",
+            "filename": "yuliya_zipp.jpg",
+            "uri": "public://yuliya_zipp.jpg",
+            "filemime": "image/jpeg",
+            "filesize": "66618",
+            "status": "1",
+            "timestamp": "1759338857",
+            "rdf_mapping": [],
+            "alt": "",
+            "title": "",
+            "width": "500",
+            "height": "500",
+            "absolute_url": "https://burdastyle.ua/sites/default/files/yuliya_zipp.jpg",
+            "absolute_path": "/home/www/burdastyle/public_html/sites/default/files/yuliya_zipp.jpg",
+            "mime": "image/jpeg",
+            "url": "https://burdastyle.ua/sites/default/files/yuliya_zipp.jpg"
+          },
+          "field_expert_about": {
+            "value": "інструкції та викрійки",
+            "format": null,
+            "safe_value": "інструкції та викрійки"
+          },
+          "field_expert_comment": {
+            "value": "\u003Cp\u003E\u003Cstrong\u003EНОСТАЛЬГІЯ\u003C/strong\u003E\u003C/p\u003E\r\n\r\n\u003Cp class=\"rtejustify\"\u003EУ будинку моїх батьків я нещодавно знайшла свою першу викрійку Burda, за допомогою якої у 15 років я пошила мамі її улюблені капрі. Вона зберігала її для мене всі ці роки...\u003C/p\u003E\r\n\r\n\u003Cp class=\"rtejustify\"\u003E&nbsp;\u003C/p\u003E\r\n\r\n\u003Cp style=\"text-align:center\"\u003E\u003Cimg alt=\"\" height=\"400\" src=\"/sites/default/files/inline/images/yuviley_10-2025_burdastyle_3.jpg\" width=\"267\" /\u003E\u003C/p\u003E\r\n",
+            "format": "full_html",
+            "safe_value": "\u003Cp\u003E\u003Cstrong\u003EНОСТАЛЬГІЯ\u003C/strong\u003E\u003C/p\u003E\n\u003Cp class=\"rtejustify\"\u003EУ будинку моїх батьків я нещодавно знайшла свою першу викрійку Burda, за допомогою якої у 15 років я пошила мамі її улюблені капрі. Вона зберігала її для мене всі ці роки...\u003C/p\u003E\n\u003Cp class=\"rtejustify\"\u003E \u003C/p\u003E\n\u003Cp style=\"text-align:center\"\u003E\u003Cimg alt=\"\" height=\"400\" src=\"/sites/default/files/inline/images/yuviley_10-2025_burdastyle_3.jpg\" width=\"267\" /\u003E\u003C/p\u003E\n"
+          },
+          "field_expert_text": {
+            "value": "\u003Cp class=\"rtecenter\"\u003E&nbsp;\u003C/p\u003E\r\n\r\n\u003Cp class=\"rtecenter\"\u003E\u003Ca href=\"https://burdastyle.ua/news/yak-stvoryuyut-vykriyky-burda-vid-50-h-do-sogodnishnih-dniv\"\u003EЯк створюють викрійки BURDA: від 50-х до сьогодення\u003C/a\u003E\u003C/p\u003E\r\n",
+            "format": "full_html",
+            "safe_value": "\u003Cp class=\"rtecenter\"\u003E \u003C/p\u003E\n\u003Cp class=\"rtecenter\"\u003E\u003Ca href=\"https://burdastyle.ua/news/yak-stvoryuyut-vykriyky-burda-vid-50-h-do-sogodnishnih-dniv\"\u003EЯк створюють викрійки BURDA: від 50-х до сьогодення\u003C/a\u003E\u003C/p\u003E\n"
+          }
+        },
+        {
+          "item_id": 6701,
+          "delta": 5,
+          "archived": 0,
+          "field_expert_name": {
+            "value": "Патрісія Рупп",
+            "format": null,
+            "safe_value": "Патрісія Рупп"
+          },
+          "field_expert_photo": {
+            "fid": "201025",
+            "uid": "1",
+            "filename": "patriciya_rupp.jpg",
+            "uri": "public://patriciya_rupp.jpg",
+            "filemime": "image/jpeg",
+            "filesize": "83948",
+            "status": "1",
+            "timestamp": "1759338998",
+            "rdf_mapping": [],
+            "alt": "",
+            "title": "",
+            "width": "500",
+            "height": "500",
+            "absolute_url": "https://burdastyle.ua/sites/default/files/patriciya_rupp.jpg",
+            "absolute_path": "/home/www/burdastyle/public_html/sites/default/files/patriciya_rupp.jpg",
+            "mime": "image/jpeg",
+            "url": "https://burdastyle.ua/sites/default/files/patriciya_rupp.jpg"
+          },
+          "field_expert_about": {
+            "value": "ілюстраторка",
+            "format": null,
+            "safe_value": "ілюстраторка"
+          },
+          "field_expert_comment": {
+            "value": "\u003Cp\u003E\u003Cstrong\u003E4000 ЕСКІЗІВ\u003C/strong\u003E\u003C/p\u003E\r\n\r\n\u003Cp class=\"rtejustify\"\u003EПатрісія Рупп уже десять років працює в редакції інструкцій в Оффенбурзі. За цей час вона створила близько 4000 ескізів для інструкцій у наших журналах.\u003C/p\u003E\r\n\r\n\u003Cp class=\"rtejustify\"\u003E&nbsp;\u003C/p\u003E\r\n\r\n\u003Cp style=\"text-align:center\"\u003E\u003Cimg alt=\"\" height=\"400\" src=\"/sites/default/files/inline/images/yuviley_10-2025_burdastyle_11.jpg\" width=\"300\" /\u003E\u003C/p\u003E\r\n",
+            "format": "full_html",
+            "safe_value": "\u003Cp\u003E\u003Cstrong\u003E4000 ЕСКІЗІВ\u003C/strong\u003E\u003C/p\u003E\n\u003Cp class=\"rtejustify\"\u003EПатрісія Рупп уже десять років працює в редакції інструкцій в Оффенбурзі. За цей час вона створила близько 4000 ескізів для інструкцій у наших журналах.\u003C/p\u003E\n\u003Cp class=\"rtejustify\"\u003E \u003C/p\u003E\n\u003Cp style=\"text-align:center\"\u003E\u003Cimg alt=\"\" height=\"400\" src=\"/sites/default/files/inline/images/yuviley_10-2025_burdastyle_11.jpg\" width=\"300\" /\u003E\u003C/p\u003E\n"
+          },
+          "field_expert_text": {
+            "value": "\u003Cp class=\"rtecenter\"\u003E&nbsp;\u003C/p\u003E\r\n\r\n\u003Cp class=\"rtecenter\"\u003E\u003Ca href=\"https://burdastyle.ua/encyclopedia/anatomiya-modeli/vykriyky-burda/yak-pracyuvaty-iz-vykriykamy-z-zhurnalu-burda\"\u003EЯк працювати із викрійками з журналу Burda\u003C/a\u003E\u003C/p\u003E\r\n",
+            "format": "full_html",
+            "safe_value": "\u003Cp class=\"rtecenter\"\u003E \u003C/p\u003E\n\u003Cp class=\"rtecenter\"\u003E\u003Ca href=\"https://burdastyle.ua/encyclopedia/anatomiya-modeli/vykriyky-burda/yak-pracyuvaty-iz-vykriykamy-z-zhurnalu-burda\"\u003EЯк працювати із викрійками з журналу Burda\u003C/a\u003E\u003C/p\u003E\n"
+          }
+        },
+        {
+          "item_id": 6702,
+          "delta": 6,
+          "archived": 0,
+          "field_expert_name": {
+            "value": "Габріела Холфстеттер",
+            "format": null,
+            "safe_value": "Габріела Холфстеттер"
+          },
+          "field_expert_photo": {
+            "fid": "201026",
+            "uid": "1",
+            "filename": "gabriela_holfstetter.jpg",
+            "uri": "public://gabriela_holfstetter.jpg",
+            "filemime": "image/jpeg",
+            "filesize": "93142",
+            "status": "1",
+            "timestamp": "1759339266",
+            "rdf_mapping": [],
+            "alt": "",
+            "title": "",
+            "width": "500",
+            "height": "500",
+            "absolute_url": "https://burdastyle.ua/sites/default/files/gabriela_holfstetter.jpg",
+            "absolute_path": "/home/www/burdastyle/public_html/sites/default/files/gabriela_holfstetter.jpg",
+            "mime": "image/jpeg",
+            "url": "https://burdastyle.ua/sites/default/files/gabriela_holfstetter.jpg"
+          },
+          "field_expert_about": {
+            "value": "редакторка ілюстрацій",
+            "format": null,
+            "safe_value": "редакторка ілюстрацій"
+          },
+          "field_expert_comment": {
+            "value": "\u003Cp\u003E\u003Cstrong\u003EРІЗДВО 1975 РОКУ\u003C/strong\u003E\u003C/p\u003E\r\n\r\n\u003Cp class=\"rtejustify\"\u003EУсі мої ляльки (Свені, Стефані, Беттіна і Сюзанна) отримали нове вбрання &mdash; і все завдяки журналу burda moden: \u003Ca href=\"https://burdastyle.ua/models/dytyacha-moda/aksesuary-dlya-dytyachoyi-kimnaty-igrashky/odyag-dlya-lyalky\"\u003Eодяг для ляльок\u003C/a\u003E був тоді невід&rsquo;ємною частиною журналу. Моя мама любила на Різдво переодягати моїх ляльок. Іронія полягає в тому, що я ніколи не любила гратися ляльками. Це так і не змінилося, але завдяки цьому в мені прокинулася любов до моди.\u003C/p\u003E\r\n\r\n\u003Cp class=\"rtejustify\"\u003E&nbsp;\u003C/p\u003E\r\n\r\n\u003Cp style=\"text-align:center\"\u003E\u003Cimg alt=\"\" height=\"400\" src=\"/sites/default/files/inline/images/yuviley_10-2025_burdastyle_6.jpg\" width=\"298\" /\u003E\u003C/p\u003E\r\n",
+            "format": "full_html",
+            "safe_value": "\u003Cp\u003E\u003Cstrong\u003EРІЗДВО 1975 РОКУ\u003C/strong\u003E\u003C/p\u003E\n\u003Cp class=\"rtejustify\"\u003EУсі мої ляльки (Свені, Стефані, Беттіна і Сюзанна) отримали нове вбрання — і все завдяки журналу burda moden: \u003Ca href=\"https://burdastyle.ua/models/dytyacha-moda/aksesuary-dlya-dytyachoyi-kimnaty-igrashky/odyag-dlya-lyalky\"\u003Eодяг для ляльок\u003C/a\u003E був тоді невід’ємною частиною журналу. Моя мама любила на Різдво переодягати моїх ляльок. Іронія полягає в тому, що я ніколи не любила гратися ляльками. Це так і не змінилося, але завдяки цьому в мені прокинулася любов до моди.\u003C/p\u003E\n\u003Cp class=\"rtejustify\"\u003E \u003C/p\u003E\n\u003Cp style=\"text-align:center\"\u003E\u003Cimg alt=\"\" height=\"400\" src=\"/sites/default/files/inline/images/yuviley_10-2025_burdastyle_6.jpg\" width=\"298\" /\u003E\u003C/p\u003E\n"
+          },
+          "field_expert_text": {
+            "value": "\u003Cp class=\"rtecenter\"\u003E&nbsp;\u003C/p\u003E\r\n\r\n\u003Cp class=\"rtecenter\"\u003E\u003Ca href=\"https://burdastyle.ua/news/vid-ideyi-do-gotovoyi-modeli-yak-stvoryuyutsya-kolekciyi-burda-style\"\u003EВід ідеї до готової моделі: як створюються колекції Burda\u003C/a\u003E\u003C/p\u003E\r\n",
+            "format": "full_html",
+            "safe_value": "\u003Cp class=\"rtecenter\"\u003E \u003C/p\u003E\n\u003Cp class=\"rtecenter\"\u003E\u003Ca href=\"https://burdastyle.ua/news/vid-ideyi-do-gotovoyi-modeli-yak-stvoryuyutsya-kolekciyi-burda-style\"\u003EВід ідеї до готової моделі: як створюються колекції Burda\u003C/a\u003E\u003C/p\u003E\n"
+          }
+        },
+        {
+          "item_id": 6703,
+          "delta": 7,
+          "archived": 0,
+          "field_expert_name": {
+            "value": "Маккензі Снайдер",
+            "format": null,
+            "safe_value": "Маккензі Снайдер"
+          },
+          "field_expert_photo": {
+            "fid": "201028",
+            "uid": "1",
+            "filename": "makkenzi_snayder.jpg",
+            "uri": "public://makkenzi_snayder_0.jpg",
+            "filemime": "image/jpeg",
+            "filesize": "73984",
+            "status": "1",
+            "timestamp": "1759339266",
+            "rdf_mapping": [],
+            "alt": "",
+            "title": "",
+            "width": "500",
+            "height": "500",
+            "absolute_url": "https://burdastyle.ua/sites/default/files/makkenzi_snayder_0.jpg",
+            "absolute_path": "/home/www/burdastyle/public_html/sites/default/files/makkenzi_snayder_0.jpg",
+            "mime": "image/jpeg",
+            "url": "https://burdastyle.ua/sites/default/files/makkenzi_snayder_0.jpg"
+          },
+          "field_expert_about": {
+            "value": "стажерка редакції",
+            "format": null,
+            "safe_value": "стажерка редакції"
+          },
+          "field_expert_comment": {
+            "value": "\u003Cp\u003E\u003Cstrong\u003EІСТОРІЇ\u003C/strong\u003E\u003C/p\u003E\r\n\r\n\u003Cp class=\"rtejustify\"\u003EМій улюблений момент у burda style &mdash; це коли модні фотосесії під час кожного знімання розповідають свою власну історію. За кожним зображенням стоїть безліч креативних ідей і рішень &mdash; від стилю і декорацій до місця знімання. Так кожен предмет одягу оживає завдяки моделі та набуває власного характеру. Ці моменти вплинули не тільки на мене загалом, але й на мій творчий розвиток.\u003C/p\u003E\r\n\r\n\u003Cp class=\"rtejustify\"\u003E&nbsp;\u003C/p\u003E\r\n\r\n\u003Cp style=\"text-align:center\"\u003E\u003Cimg alt=\"\" height=\"400\" src=\"/sites/default/files/inline/images/yuviley_10-2025_burdastyle_12.jpg\" width=\"300\" /\u003E\u003C/p\u003E\r\n",
+            "format": "full_html",
+            "safe_value": "\u003Cp\u003E\u003Cstrong\u003EІСТОРІЇ\u003C/strong\u003E\u003C/p\u003E\n\u003Cp class=\"rtejustify\"\u003EМій улюблений момент у burda style — це коли модні фотосесії під час кожного знімання розповідають свою власну історію. За кожним зображенням стоїть безліч креативних ідей і рішень — від стилю і декорацій до місця знімання. Так кожен предмет одягу оживає завдяки моделі та набуває власного характеру. Ці моменти вплинули не тільки на мене загалом, але й на мій творчий розвиток.\u003C/p\u003E\n\u003Cp class=\"rtejustify\"\u003E \u003C/p\u003E\n\u003Cp style=\"text-align:center\"\u003E\u003Cimg alt=\"\" height=\"400\" src=\"/sites/default/files/inline/images/yuviley_10-2025_burdastyle_12.jpg\" width=\"300\" /\u003E\u003C/p\u003E\n"
+          },
+          "field_expert_text": {
+            "value": "\u003Cp class=\"rtecenter\"\u003E&nbsp;\u003C/p\u003E\r\n\r\n\u003Cp class=\"rtecenter\"\u003E\u003Ca href=\"https://burdastyle.ua/encyclopedia/gid-po-stylyu/konstruktor-stylyu/model-misyacya-bluzka-v-styli-70-h\"\u003EМодель місяця: блузка в стилі 70-х\u003C/a\u003E\u003C/p\u003E\r\n\r\n\u003Cp\u003E&nbsp;\u003C/p\u003E\r\n\r\n\u003Cp\u003E&nbsp;\u003C/p\u003E\r\n\r\n\u003Cp\u003E\u003Cspan style=\"font-size:12px\"\u003EФОТО: VABARCHIV; PRIVAT; @MARGO.PHOTOART BY RITA TYRCHYK (1); MORITZ ZAUNER (1); BLASIUS ERLINGER (1); SABINE DUERICHEN (1)\u003C/span\u003E\u003C/p\u003E\r\n",
+            "format": "full_html",
+            "safe_value": "\u003Cp class=\"rtecenter\"\u003E \u003C/p\u003E\n\u003Cp class=\"rtecenter\"\u003E\u003Ca href=\"https://burdastyle.ua/encyclopedia/gid-po-stylyu/konstruktor-stylyu/model-misyacya-bluzka-v-styli-70-h\"\u003EМодель місяця: блузка в стилі 70-х\u003C/a\u003E\u003C/p\u003E\n\u003Cp\u003E \u003C/p\u003E\n\u003Cp\u003E \u003C/p\u003E\n\u003Cp\u003E\u003Cspan style=\"font-size:12px\"\u003EФОТО: VABARCHIV; PRIVAT; @MARGO.PHOTOART BY RITA TYRCHYK (1); MORITZ ZAUNER (1); BLASIUS ERLINGER (1); SABINE DUERICHEN (1)\u003C/span\u003E\u003C/p\u003E\n"
+          }
+        }
+      ]
+    },
+    "field_enc_category": {
+      "tid": "984"
+    },
+    "field_tag": [
+      {
+        "tid": "1166"
+      }
+    ],
+    "field_see_top_block": {
+      "value": "1"
+    },
+    "field_demo_advert": {
+      "value": "0"
+    }
+  }
+}
