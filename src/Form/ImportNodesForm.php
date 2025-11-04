@@ -478,15 +478,50 @@ class ImportNodesForm extends FormBase {
       }
       // 2. Зображення (image) - має fid + alt + title.
       elseif (isset($first_item['fid']) && isset($first_item['filemime']) && strpos($first_item['filemime'], 'image/') === 0) {
-        // TODO: Додати завантаження файлів з Drupal 7.
-        // Поки що пропускаємо.
-        \Drupal::logger('migrate_from_drupal7')->info('Пропускаємо зображення @field - завантаження файлів TODO', ['@field' => $field_name]);
+        $images = [];
+        $image_counter = 1;
+
+        foreach ($field_values as $image_data) {
+          $file = self::downloadFile($image_data, $field_name);
+          if ($file) {
+            $alt = $image_data['alt'] ?? '';
+            // Якщо alt порожній, використовуємо title ноди.
+            if (empty($alt)) {
+              // Якщо множинне поле, додаємо номер.
+              $alt = count($field_values) > 1 ? "$title - фото $image_counter" : $title;
+            }
+
+            $images[] = [
+              'target_id' => $file->id(),
+              'alt' => $alt,
+              'title' => $image_data['title'] ?? '',
+            ];
+            $image_counter++;
+          }
+        }
+
+        if (!empty($images)) {
+          $fields_data[$field_name] = $images;
+        }
       }
       // 3. Файли (file) - має fid + filename + uri.
       elseif (isset($first_item['fid']) && isset($first_item['filename'])) {
-        // TODO: Додати завантаження файлів з Drupal 7.
-        // Поки що пропускаємо.
-        \Drupal::logger('migrate_from_drupal7')->info('Пропускаємо файл @field - завантаження файлів TODO', ['@field' => $field_name]);
+        $files = [];
+
+        foreach ($field_values as $file_data) {
+          $file = self::downloadFile($file_data, $field_name);
+          if ($file) {
+            $files[] = [
+              'target_id' => $file->id(),
+              'description' => $file_data['description'] ?? '',
+              'display' => $file_data['display'] ?? 1,
+            ];
+          }
+        }
+
+        if (!empty($files)) {
+          $fields_data[$field_name] = $files;
+        }
       }
       // 4. Таксономія (entity_reference) - має tid.
       elseif (isset($first_item['tid'])) {
@@ -578,6 +613,75 @@ class ImportNodesForm extends FormBase {
     }
 
     return $fields_data;
+  }
+
+  /**
+   * Завантаження файлу з Drupal 7.
+   *
+   * @param array $file_data
+   *   Дані файлу з JSON (fid, filename, uri, absolute_url тощо).
+   * @param string $field_name
+   *   Назва поля (для логування).
+   *
+   * @return \Drupal\file\FileInterface|null
+   *   File entity або NULL у разі помилки.
+   */
+  protected static function downloadFile(array $file_data, string $field_name) {
+    $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
+    $old_fid = $file_data['fid'];
+
+    // Перевіряємо чи файл вже імпортований.
+    $new_fid = $mapping_service->getNewId('file', $old_fid);
+    if ($new_fid) {
+      $file = \Drupal\file\Entity\File::load($new_fid);
+      if ($file) {
+        \Drupal::logger('migrate_from_drupal7')->info('Файл fid=@fid вже існує в системі', ['@fid' => $old_fid]);
+        return $file;
+      }
+    }
+
+    // Отримуємо URL для завантаження.
+    $url = $file_data['absolute_url'] ?? NULL;
+    if (empty($url)) {
+      \Drupal::logger('migrate_from_drupal7')->warning('Відсутній absolute_url для файлу fid=@fid', ['@fid' => $old_fid]);
+      return NULL;
+    }
+
+    // Визначаємо директорію для збереження.
+    $uri = $file_data['uri'] ?? 'public://' . $file_data['filename'];
+    $directory = dirname($uri);
+
+    // Створюємо директорію якщо не існує.
+    \Drupal::service('file_system')->prepareDirectory($directory, \Drupal\Core\File\FileSystemInterface::CREATE_DIRECTORY);
+
+    try {
+      // Завантажуємо файл.
+      $http_client = \Drupal::httpClient();
+      $response = $http_client->get($url);
+      $file_content = $response->getBody()->getContents();
+
+      // Зберігаємо файл.
+      $file = \Drupal::service('file.repository')->writeData($file_content, $uri, \Drupal\Core\File\FileSystemInterface::EXISTS_REPLACE);
+
+      if ($file) {
+        // Зберігаємо маппінг.
+        $mapping_service->saveMapping('file', $old_fid, $file->id());
+        \Drupal::logger('migrate_from_drupal7')->info('Завантажено файл @filename (old_fid=@old, new_fid=@new)', [
+          '@filename' => $file_data['filename'],
+          '@old' => $old_fid,
+          '@new' => $file->id(),
+        ]);
+        return $file;
+      }
+    }
+    catch (\Exception $e) {
+      \Drupal::logger('migrate_from_drupal7')->error('Помилка завантаження файлу @url: @msg', [
+        '@url' => $url,
+        '@msg' => $e->getMessage(),
+      ]);
+    }
+
+    return NULL;
   }
 
   /**
