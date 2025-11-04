@@ -137,6 +137,8 @@ class ImportNodesForm extends FormBase {
     foreach ($node_list_slice as $node_preview) {
       $nid = $node_preview['nid'];
 
+      \Drupal::logger('migrate_from_drupal7')->info('=== Обробка nid=@nid ===', ['@nid' => $nid]);
+
       // Перевіряємо чи цей nid вже був оброблений (як частина групи перекладів).
       if (in_array($nid, $context['sandbox']['processed_nids'])) {
         \Drupal::logger('migrate_from_drupal7')->info('Пропускаємо nid=@nid - вже оброблено', ['@nid' => $nid]);
@@ -146,7 +148,9 @@ class ImportNodesForm extends FormBase {
 
       try {
         // Завантажуємо ноду з усіма перекладами.
+        \Drupal::logger('migrate_from_drupal7')->info('Викликаємо getNodeById(@nid)', ['@nid' => $nid]);
         $nodes_data = $api_client->getNodeById($nid);
+        \Drupal::logger('migrate_from_drupal7')->info('Отримано @count елементів', ['@count' => is_array($nodes_data) ? count($nodes_data) : 0]);
 
         if (empty($nodes_data)) {
           $context['sandbox']['errors']++;
@@ -185,6 +189,12 @@ class ImportNodesForm extends FormBase {
           $node_tnid = $node_data['tnid'] ?? $node_nid;
           $is_translation = !empty($node_tnid) && $node_tnid != $node_nid && $node_tnid != '0';
 
+          \Drupal::logger('migrate_from_drupal7')->info('  nid=@nid, tnid=@tnid, is_translation=@trans', [
+            '@nid' => $node_nid,
+            '@tnid' => $node_tnid,
+            '@trans' => $is_translation ? 'ТАК' : 'НІ',
+          ]);
+
           if ($is_translation) {
             $translations_data[] = $node_data;
           }
@@ -192,6 +202,11 @@ class ImportNodesForm extends FormBase {
             $original_data = $node_data;
           }
         }
+
+        \Drupal::logger('migrate_from_drupal7')->info('Розділено: оригінал=@orig, перекладів=@count', [
+          '@orig' => $original_data ? $original_data['nid'] : 'немає',
+          '@count' => count($translations_data),
+        ]);
 
         // Спочатку імпортуємо оригінал.
         if ($original_data) {
@@ -224,9 +239,11 @@ class ImportNodesForm extends FormBase {
           }
           // Додаємо nid оригіналу до оброблених.
           $context['sandbox']['processed_nids'][] = $original_data['nid'];
+          \Drupal::logger('migrate_from_drupal7')->info('Додано до processed_nids: @nid', ['@nid' => $original_data['nid']]);
         }
 
         // Потім імпортуємо переклади.
+        \Drupal::logger('migrate_from_drupal7')->info('Імпорт перекладів: @count шт', ['@count' => count($translations_data)]);
         foreach ($translations_data as $translation_data) {
           $result = self::importSingleNode($translation_data);
           if ($result['success']) {
@@ -257,7 +274,13 @@ class ImportNodesForm extends FormBase {
           }
           // Додаємо nid перекладу до оброблених.
           $context['sandbox']['processed_nids'][] = $translation_data['nid'];
+          \Drupal::logger('migrate_from_drupal7')->info('Додано до processed_nids: @nid', ['@nid' => $translation_data['nid']]);
         }
+
+        \Drupal::logger('migrate_from_drupal7')->info('=== Завершено обробку nid=@nid. Всього оброблено nid: @list ===', [
+          '@nid' => $nid,
+          '@list' => implode(', ', $context['sandbox']['processed_nids']),
+        ]);
       }
       catch (\Exception $e) {
         $context['sandbox']['errors']++;
