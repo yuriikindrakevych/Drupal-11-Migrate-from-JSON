@@ -38,6 +38,14 @@ class SettingsForm extends ConfigFormBase {
       '#required' => TRUE,
     ];
 
+    $form['private_files_path'] = [
+      '#type' => 'textfield',
+      '#title' => $this->t('Шлях приватних файлів'),
+      '#description' => $this->t('Шлях до приватних файлів на Drupal 7 (наприклад: /system/files/). Залиште порожнім якщо немає приватних файлів.'),
+      '#default_value' => $config->get('private_files_path') ?? '/system/files/',
+      '#required' => FALSE,
+    ];
+
     $form['endpoints'] = [
       '#type' => 'details',
       '#title' => $this->t('API Endpoints'),
@@ -110,6 +118,7 @@ class SettingsForm extends ConfigFormBase {
     $config = $this->config('migrate_from_drupal7.settings');
 
     $config->set('base_url', $form_state->getValue('base_url'));
+    $config->set('private_files_path', $form_state->getValue('private_files_path'));
 
     $endpoints = [
       'content_types',
