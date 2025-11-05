@@ -253,7 +253,29 @@ class ImportContentTypesForm extends FormBase {
         foreach ($selected_fields as $field_name) {
           if (isset($content_type_data['fields'][$field_name])) {
             $field_info = $content_type_data['fields'][$field_name];
-            self::createField($type_id, $field_name, $field_info);
+            try {
+              self::createField($type_id, $field_name, $field_info);
+              \Drupal::logger('migrate_from_drupal7')->info(
+                'Оброблено поле @field для типу @type (тип поля: @field_type)',
+                [
+                  '@field' => $field_name,
+                  '@type' => $type_id,
+                  '@field_type' => $field_info['type'] ?? 'unknown',
+                ]
+              );
+            }
+            catch (\Exception $e) {
+              \Drupal::logger('migrate_from_drupal7')->error(
+                'Помилка створення поля @field для типу @type: @message. Stack trace: @trace',
+                [
+                  '@field' => $field_name,
+                  '@type' => $type_id,
+                  '@message' => $e->getMessage(),
+                  '@trace' => $e->getTraceAsString(),
+                ]
+              );
+              $context['results']['field_errors'][] = $field_name . ': ' . $e->getMessage();
+            }
           }
         }
       }
@@ -616,28 +638,38 @@ class ImportContentTypesForm extends FormBase {
    *   Інформація про поле field collection.
    */
   protected static function createParagraphField($type_id, $field_name, array $field_info) {
-    // Визначаємо bundle paragraph type з field collection.
-    $paragraph_bundle = $field_info['collection']['bundle'] ?? $field_name;
+    try {
+      // Перевіряємо чи є дані про collection.
+      if (!isset($field_info['collection']) || empty($field_info['collection'])) {
+        \Drupal::logger('migrate_from_drupal7')->warning(
+          'Пропущено поле @field (@type): відсутні дані про collection в JSON',
+          ['@field' => $field_name, '@type' => $type_id]
+        );
+        return;
+      }
 
-    // Перевіряємо чи існує paragraph type.
-    $module_handler = \Drupal::service('module_handler');
-    if (!$module_handler->moduleExists('paragraphs')) {
-      \Drupal::logger('migrate_from_drupal7')->warning(
-        'Пропущено поле @field (@type): модуль Paragraphs не встановлено. Встановіть: composer require drupal/paragraphs',
-        ['@field' => $field_name, '@type' => $type_id]
-      );
-      return;
-    }
+      // Визначаємо bundle paragraph type з field collection.
+      $paragraph_bundle = $field_info['collection']['bundle'] ?? $field_name;
 
-    // Перевіряємо чи існує paragraph type з таким bundle.
-    $paragraph_type = \Drupal\paragraphs\Entity\ParagraphsType::load($paragraph_bundle);
-    if (!$paragraph_type) {
-      \Drupal::logger('migrate_from_drupal7')->warning(
-        'Пропущено поле @field (@type): Paragraph Type "@bundle" не знайдено. Спочатку створіть Paragraph Types через форму "Створення Paragraph Types".',
-        ['@field' => $field_name, '@type' => $type_id, '@bundle' => $paragraph_bundle]
-      );
-      return;
-    }
+      // Перевіряємо чи існує paragraph type.
+      $module_handler = \Drupal::service('module_handler');
+      if (!$module_handler->moduleExists('paragraphs')) {
+        \Drupal::logger('migrate_from_drupal7')->warning(
+          'Пропущено поле @field (@type): модуль Paragraphs не встановлено. Встановіть: composer require drupal/paragraphs',
+          ['@field' => $field_name, '@type' => $type_id]
+        );
+        return;
+      }
+
+      // Перевіряємо чи існує paragraph type з таким bundle.
+      $paragraph_type = \Drupal\paragraphs\Entity\ParagraphsType::load($paragraph_bundle);
+      if (!$paragraph_type) {
+        \Drupal::logger('migrate_from_drupal7')->warning(
+          'Пропущено поле @field (@type): Paragraph Type "@bundle" не знайдено. Спочатку створіть Paragraph Types через форму "Створення Paragraph Types".',
+          ['@field' => $field_name, '@type' => $type_id, '@bundle' => $paragraph_bundle]
+        );
+        return;
+      }
 
     // Отримуємо cardinality.
     $cardinality = $field_info['cardinality'] == -1 ? -1 : (int) $field_info['cardinality'];
@@ -753,6 +785,21 @@ class ImportContentTypesForm extends FormBase {
       ]);
       $view_display->save();
     }
+    }
+    catch (\Exception $e) {
+      \Drupal::logger('migrate_from_drupal7')->error(
+        'Помилка створення paragraph поля @field для типу @type: @message',
+        [
+          '@field' => $field_name,
+          '@type' => $type_id,
+          '@message' => $e->getMessage(),
+        ]
+      );
+      \Drupal::messenger()->addError(t('Помилка створення поля @field: @message', [
+        '@field' => $field_name,
+        '@message' => $e->getMessage(),
+      ]));
+    }
   }
 
   /**
@@ -776,9 +823,15 @@ class ImportContentTypesForm extends FormBase {
         $messenger->addStatus(t('Оновлено типів матеріалів: @count', ['@count' => count($results['updated'])]));
       }
       if (!empty($results['errors'])) {
-        $messenger->addError(t('Помилки: @count', ['@count' => count($results['errors'])]));
+        $messenger->addError(t('Помилки типів контенту: @count', ['@count' => count($results['errors'])]));
         foreach ($results['errors'] as $error) {
           $messenger->addError($error);
+        }
+      }
+      if (!empty($results['field_errors'])) {
+        $messenger->addWarning(t('Помилки полів: @count. Деякі поля не вдалося створити.', ['@count' => count($results['field_errors'])]));
+        foreach ($results['field_errors'] as $error) {
+          $messenger->addWarning('⚠ ' . $error);
         }
       }
     }
