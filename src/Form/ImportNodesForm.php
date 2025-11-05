@@ -561,9 +561,36 @@ class ImportNodesForm extends FormBase {
       }
       // 8. Field Collections → Paragraphs - має field_type + items.
       elseif (is_array($field_values) && isset($field_values['field_type']) && $field_values['field_type'] === 'field_collection') {
-        $paragraphs = self::convertFieldCollectionsToParagraphs($field_values, $title, $bundle);
-        if (!empty($paragraphs)) {
-          $fields_data[$field_name] = $paragraphs;
+        try {
+          \Drupal::logger('migrate_from_drupal7')->info(
+            'Початок конвертації field collection @field (@bundle), items: @count',
+            [
+              '@field' => $field_name,
+              '@bundle' => $field_values['target_bundle'] ?? 'unknown',
+              '@count' => count($field_values['items'] ?? []),
+            ]
+          );
+
+          $paragraphs = self::convertFieldCollectionsToParagraphs($field_values, $title, $bundle);
+
+          if (!empty($paragraphs)) {
+            $fields_data[$field_name] = $paragraphs;
+            \Drupal::logger('migrate_from_drupal7')->info(
+              'Створено @count paragraphs для поля @field',
+              ['@count' => count($paragraphs), '@field' => $field_name]
+            );
+          }
+        }
+        catch (\Exception $e) {
+          \Drupal::logger('migrate_from_drupal7')->error(
+            'Помилка конвертації field collection @field: @message. Trace: @trace',
+            [
+              '@field' => $field_name,
+              '@message' => $e->getMessage(),
+              '@trace' => $e->getTraceAsString(),
+            ]
+          );
+          // Пропускаємо це поле, але продовжуємо імпорт інших
         }
       }
       // 9. Інші типи - пропускаємо.
@@ -864,19 +891,39 @@ class ImportNodesForm extends FormBase {
       return ($a['delta'] ?? 0) <=> ($b['delta'] ?? 0);
     });
 
-    foreach ($items as $item) {
+    foreach ($items as $index => $item) {
       // Пропускаємо архівовані items.
       if (!empty($item['archived'])) {
+        \Drupal::logger('migrate_from_drupal7')->info(
+          'Пропущено архівований item @item_id (delta: @delta)',
+          ['@item_id' => $item['item_id'] ?? 'unknown', '@delta' => $item['delta'] ?? $index]
+        );
         continue;
       }
 
       try {
+        \Drupal::logger('migrate_from_drupal7')->info(
+          'Створення paragraph @index/@total (item_id: @item_id, bundle: @bundle)',
+          [
+            '@index' => $index + 1,
+            '@total' => count($items),
+            '@item_id' => $item['item_id'] ?? 'unknown',
+            '@bundle' => $target_bundle,
+          ]
+        );
+
         $paragraph = self::createParagraphFromItem($item, $target_bundle, $node_title, $bundle);
+
         if ($paragraph) {
           $paragraph_references[] = [
             'target_id' => $paragraph->id(),
             'target_revision_id' => $paragraph->getRevisionId(),
           ];
+
+          \Drupal::logger('migrate_from_drupal7')->info(
+            'Створено paragraph ID @pid для item_id @item_id',
+            ['@pid' => $paragraph->id(), '@item_id' => $item['item_id'] ?? 'unknown']
+          );
 
           // Зберігаємо маппінг field_collection_item_id → paragraph_id.
           if (!empty($item['item_id'])) {
@@ -889,12 +936,24 @@ class ImportNodesForm extends FormBase {
             );
           }
         }
+        else {
+          \Drupal::logger('migrate_from_drupal7')->warning(
+            'Не вдалося створити paragraph для item_id @item_id',
+            ['@item_id' => $item['item_id'] ?? 'unknown']
+          );
+        }
       }
       catch (\Exception $e) {
         \Drupal::logger('migrate_from_drupal7')->error(
-          'Помилка створення paragraph: @message',
-          ['@message' => $e->getMessage()]
+          'Помилка створення paragraph (item_id: @item_id, delta: @delta): @message. Trace: @trace',
+          [
+            '@item_id' => $item['item_id'] ?? 'unknown',
+            '@delta' => $item['delta'] ?? $index,
+            '@message' => $e->getMessage(),
+            '@trace' => $e->getTraceAsString(),
+          ]
         );
+        // Продовжуємо обробку інших items
       }
     }
 
@@ -918,15 +977,22 @@ class ImportNodesForm extends FormBase {
    */
   protected static function createParagraphFromItem(array $item, string $paragraph_type, string $node_title, string $bundle): ?Paragraph {
     if (empty($paragraph_type)) {
+      \Drupal::logger('migrate_from_drupal7')->warning('createParagraphFromItem: порожній paragraph_type');
       return NULL;
     }
 
-    // Створюємо paragraph.
-    $paragraph = Paragraph::create([
-      'type' => $paragraph_type,
-    ]);
+    try {
+      // Створюємо paragraph.
+      $paragraph = Paragraph::create([
+        'type' => $paragraph_type,
+      ]);
 
-    $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
+      \Drupal::logger('migrate_from_drupal7')->info(
+        'Створено paragraph entity типу @type, обробка @count полів',
+        ['@type' => $paragraph_type, '@count' => count($item)]
+      );
+
+      $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
 
     // Встановлюємо всі поля з item.
     foreach ($item as $field_name => $value) {
@@ -1004,14 +1070,35 @@ class ImportNodesForm extends FormBase {
       }
       catch (\Exception $e) {
         \Drupal::logger('migrate_from_drupal7')->error(
-          'Помилка встановлення поля @field в paragraph: @message',
-          ['@field' => $field_name, '@message' => $e->getMessage()]
+          'Помилка встановлення поля @field в paragraph типу @type: @message',
+          [
+            '@field' => $field_name,
+            '@type' => $paragraph_type,
+            '@message' => $e->getMessage(),
+          ]
         );
+        // Продовжуємо обробку інших полів
       }
     }
 
+    // Зберігаємо paragraph.
+    \Drupal::logger('migrate_from_drupal7')->info('Збереження paragraph типу @type', ['@type' => $paragraph_type]);
     $paragraph->save();
+
+    \Drupal::logger('migrate_from_drupal7')->info('Paragraph збережено з ID @id', ['@id' => $paragraph->id()]);
     return $paragraph;
+    }
+    catch (\Exception $e) {
+      \Drupal::logger('migrate_from_drupal7')->error(
+        'Критична помилка в createParagraphFromItem для типу @type: @message. Trace: @trace',
+        [
+          '@type' => $paragraph_type,
+          '@message' => $e->getMessage(),
+          '@trace' => $e->getTraceAsString(),
+        ]
+      );
+      return NULL;
+    }
   }
 
   /**
