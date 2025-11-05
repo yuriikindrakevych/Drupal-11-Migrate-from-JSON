@@ -411,29 +411,74 @@ class ImportTermsForm extends FormBase {
       }
     }
 
-    // 3. Створюємо або оновлюємо термін.
+    // 3. Визначаємо мову терміну та дані для створення.
+    // Для "localize" режиму (language: "und") використовуємо дані з першого перекладу.
+    $term_language = $term_data['language'] ?? 'uk';
+    $term_name = $term_data['name'];
+    $term_description = $term_data['description'] ?? '';
+    $translations_to_add = [];
+
+    if ($term_language === 'und' && !empty($term_data['translations'])) {
+      // Режим "localize" - основний термін має "und", але є переклади.
+      // Використовуємо український переклад як основну мову (або перший доступний).
+      if (isset($term_data['translations']['uk'])) {
+        $base_translation = $term_data['translations']['uk'];
+        $term_language = 'uk';
+      }
+      else {
+        // Якщо українського немає, беремо перший переклад.
+        $base_translation = reset($term_data['translations']);
+        $term_language = key($term_data['translations']);
+      }
+
+      // Використовуємо дані з базового перекладу.
+      $term_name = $base_translation['name'] ?? $term_name;
+      $term_description = $base_translation['description'] ?? $term_description;
+
+      // Всі інші переклади додамо після створення терміну.
+      foreach ($term_data['translations'] as $langcode => $translation) {
+        if ($langcode !== $term_language) {
+          $translations_to_add[$langcode] = $translation;
+        }
+      }
+
+      \Drupal::logger('migrate_from_drupal7')->info(
+        'Термін @tid з режимом "localize" (und) створюється з мовою @lang. Додаткові переклади: @langs',
+        [
+          '@tid' => $old_tid,
+          '@lang' => $term_language,
+          '@langs' => implode(', ', array_keys($translations_to_add)),
+        ]
+      );
+    }
+    elseif (!empty($term_data['translations'])) {
+      // Режим "translate" - основний термін має конкретну мову, додаємо всі переклади.
+      $translations_to_add = $term_data['translations'];
+    }
+
+    // 4. Створюємо або оновлюємо термін.
     if ($is_update && $term) {
       // Оновлюємо існуючий термін.
-      $term->set('name', $term_data['name']);
+      $term->set('name', $term_name);
       $term->set('description', [
-        'value' => $term_data['description'] ?? '',
+        'value' => $term_description,
         'format' => 'basic_html',
       ]);
       $term->set('weight', $term_data['weight'] ?? 0);
-      $term->set('langcode', $term_data['language'] ?? 'uk');
+      $term->set('langcode', $term_language);
       $term->set('parent', $parent_id ? [$parent_id] : [0]);
     }
     else {
       // Створюємо новий термін.
       $term = Term::create([
         'vid' => $vocabulary_id,
-        'name' => $term_data['name'],
+        'name' => $term_name,
         'description' => [
-          'value' => $term_data['description'] ?? '',
+          'value' => $term_description,
           'format' => 'basic_html',
         ],
         'weight' => $term_data['weight'] ?? 0,
-        'langcode' => $term_data['language'] ?? 'uk',
+        'langcode' => $term_language,
         'parent' => $parent_id ? [$parent_id] : [0],
       ]);
     }
@@ -445,9 +490,9 @@ class ImportTermsForm extends FormBase {
 
     $term->save();
 
-    // 4. Додаємо переклади.
-    if (!empty($term_data['translations'])) {
-      foreach ($term_data['translations'] as $langcode => $translation_data) {
+    // 5. Додаємо переклади.
+    if (!empty($translations_to_add)) {
+      foreach ($translations_to_add as $langcode => $translation_data) {
         self::addTranslation($term, $langcode, $translation_data);
       }
     }
@@ -499,14 +544,39 @@ class ImportTermsForm extends FormBase {
    */
   protected static function addTranslation(Term $term, $langcode, array $translation_data) {
     if (!$term->hasTranslation($langcode)) {
-      $term->addTranslation($langcode, [
+      $translation = $term->addTranslation($langcode, [
         'name' => $translation_data['name'],
         'description' => [
           'value' => $translation_data['description'] ?? '',
           'format' => 'basic_html',
         ],
       ]);
+
+      // Імпортуємо поля перекладу, якщо вони є.
+      if (!empty($translation_data['fields'])) {
+        self::importFields($translation, $translation_data['fields']);
+      }
+
       $term->save();
+
+      \Drupal::logger('migrate_from_drupal7')->debug(
+        'Додано переклад @lang для терміну @name (tid: @tid)',
+        [
+          '@lang' => $langcode,
+          '@name' => $term->getName(),
+          '@tid' => $term->id(),
+        ]
+      );
+    }
+    else {
+      \Drupal::logger('migrate_from_drupal7')->debug(
+        'Переклад @lang вже існує для терміну @name (tid: @tid)',
+        [
+          '@lang' => $langcode,
+          '@name' => $term->getName(),
+          '@tid' => $term->id(),
+        ]
+      );
     }
   }
 

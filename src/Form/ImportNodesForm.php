@@ -537,6 +537,19 @@ class ImportNodesForm extends FormBase {
     // Підготовка даних полів для імпорту.
     $fields_data = self::prepareFieldsData($node_data, $title);
 
+    // Логування для діагностики перекладів.
+    if ($is_translation) {
+      \Drupal::logger('migrate_from_drupal7')->info(
+        'Підготовка перекладу ноди @nid (мова: @lang, tnid: @tnid). Поля: @fields',
+        [
+          '@nid' => $nid,
+          '@lang' => $language,
+          '@tnid' => $tnid,
+          '@fields' => implode(', ', array_keys($fields_data)),
+        ]
+      );
+    }
+
     if ($is_translation) {
       // Це переклад - шукаємо оригінал.
       $original_new_nid = $mapping_service->getNewId('node', $tnid, $node_type);
@@ -1325,14 +1338,41 @@ class ImportNodesForm extends FormBase {
       try {
         $node->set($field_name, $field_value);
 
-        \Drupal::logger('migrate_from_drupal7')->info(
-          'Поле @field успішно встановлено для ноди @nid (тип: @type)',
-          [
-            '@field' => $field_name,
-            '@nid' => $node->id() ?? 'новий',
-            '@type' => $node->bundle(),
-          ]
-        );
+        // Додаткове логування для полів entity_reference (таксономія).
+        $field_definition = $node->getFieldDefinition($field_name);
+        if ($field_definition && $field_definition->getType() === 'entity_reference') {
+          $target_type = $field_definition->getSetting('target_type');
+          if ($target_type === 'taxonomy_term') {
+            $term_ids = [];
+            if (is_array($field_value)) {
+              foreach ($field_value as $item) {
+                if (isset($item['target_id'])) {
+                  $term_ids[] = $item['target_id'];
+                }
+              }
+            }
+
+            \Drupal::logger('migrate_from_drupal7')->info(
+              'Поле таксономії @field встановлено для ноди @nid (мова: @lang). Терміни: @terms',
+              [
+                '@field' => $field_name,
+                '@nid' => $node->id() ?? 'новий',
+                '@lang' => $node->language()->getId(),
+                '@terms' => implode(', ', $term_ids),
+              ]
+            );
+          }
+        }
+        else {
+          \Drupal::logger('migrate_from_drupal7')->info(
+            'Поле @field успішно встановлено для ноди @nid (тип: @type)',
+            [
+              '@field' => $field_name,
+              '@nid' => $node->id() ?? 'новий',
+              '@type' => $node->bundle(),
+            ]
+          );
+        }
       }
       catch (\Exception $e) {
         \Drupal::logger('migrate_from_drupal7')->error(
