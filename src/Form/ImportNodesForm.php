@@ -70,6 +70,16 @@ class ImportNodesForm extends FormBase {
       $form['node_types']['#options'][$node_type->id()] = $node_type->label();
     }
 
+    $form['batch_size'] = [
+      '#type' => 'number',
+      '#title' => $this->t('Кількість матеріалів за один batch'),
+      '#description' => $this->t('Рекомендовано: 10-50. Менше значення = повільніше, але надійніше. Більше значення = швидше, але може призвести до помилок.'),
+      '#default_value' => 20,
+      '#min' => 1,
+      '#max' => 100,
+      '#required' => TRUE,
+    ];
+
     $form['actions']['submit'] = [
       '#type' => 'submit',
       '#value' => $this->t('Імпорт'),
@@ -80,17 +90,18 @@ class ImportNodesForm extends FormBase {
 
   public function submitForm(array &$form, FormStateInterface $form_state) {
     $node_types = array_filter($form_state->getValue('node_types'));
+    $batch_size = (int) $form_state->getValue('batch_size');
 
     $batch = [
-      'title' => $this->t('Імпорт'),
+      'title' => $this->t('Імпорт матеріалів'),
       'operations' => [],
-      'finished' => [$this, 'batchFinished'],
+      'finished' => [self::class, 'batchFinished'],
     ];
 
     foreach ($node_types as $node_type) {
       $batch['operations'][] = [
-        [self::class, 'batchImport'],
-        [$node_type],
+        [self::class, 'batchImportNodes'],
+        [$node_type, $batch_size],
       ];
     }
 
@@ -98,7 +109,211 @@ class ImportNodesForm extends FormBase {
   }
 
   /**
-   * Batch імпорт.
+   * Batch імпорт нод з offset (новий метод).
+   *
+   * @param string $node_type
+   *   Тип матеріалу.
+   * @param int $batch_size
+   *   Кількість нод за один batch.
+   * @param array $context
+   *   Контекст batch.
+   */
+  public static function batchImportNodes($node_type, $batch_size, array &$context) {
+    $api_client = \Drupal::service('migrate_from_drupal7.api_client');
+    $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
+    $log_service = \Drupal::service('migrate_from_drupal7.log');
+
+    // Ініціалізація.
+    if (!isset($context['sandbox']['progress'])) {
+      $context['sandbox']['progress'] = 0;
+      $context['sandbox']['offset'] = 0;
+      $context['sandbox']['imported'] = 0;
+      $context['sandbox']['errors'] = 0;
+      $context['sandbox']['batch_size'] = $batch_size;
+      $context['sandbox']['node_type'] = $node_type;
+
+      // Отримуємо загальну кількість нод (приблизно).
+      $context['sandbox']['max'] = 999999; // Будемо зменшувати поступово
+
+      $log_service->logSuccess(
+        'import_start',
+        'node',
+        "Початок імпорту типу $node_type (batch size: $batch_size)",
+        $node_type,
+        []
+      );
+    }
+
+    // Завантажуємо порцію нод.
+    $offset = $context['sandbox']['offset'];
+    $nodes = $api_client->getNodes($node_type, $batch_size, $offset);
+
+    if (empty($nodes)) {
+      // Більше немає нод - завершуємо.
+      $context['finished'] = 1;
+      $context['message'] = t('Імпорт типу @type завершено. Імпортовано: @imported, Помилок: @errors', [
+        '@type' => $node_type,
+        '@imported' => $context['sandbox']['imported'],
+        '@errors' => $context['sandbox']['errors'],
+      ]);
+
+      $log_service->logSuccess(
+        'import_finished',
+        'node',
+        "Завершено імпорт типу $node_type. Імпортовано: {$context['sandbox']['imported']}, Помилок: {$context['sandbox']['errors']}",
+        $node_type,
+        [
+          'imported' => $context['sandbox']['imported'],
+          'errors' => $context['sandbox']['errors'],
+        ]
+      );
+      return;
+    }
+
+    // Групуємо за tnid для обробки перекладів.
+    $nodes_by_tnid = [];
+    foreach ($nodes as $node_preview) {
+      $nid = $node_preview['nid'];
+
+      try {
+        $node_data = $api_client->getNodeById($nid);
+
+        if (empty($node_data) || !is_array($node_data)) {
+          continue;
+        }
+
+        $tnid = $node_data['tnid'] ?? $nid;
+        if (!isset($nodes_by_tnid[$tnid])) {
+          $nodes_by_tnid[$tnid] = [];
+        }
+        $nodes_by_tnid[$tnid][] = $node_data;
+      }
+      catch (\Exception $e) {
+        \Drupal::logger('migrate_from_drupal7')->error(
+          'Помилка завантаження ноди @nid: @message',
+          ['@nid' => $nid, '@message' => $e->getMessage()]
+        );
+        $context['sandbox']['errors']++;
+      }
+    }
+
+    // Обробляємо кожну групу (оригінал + переклади).
+    foreach ($nodes_by_tnid as $nodes_data) {
+      try {
+        // Розділяємо на оригінал та переклади.
+        $original_data = NULL;
+        $translations_data = [];
+
+        foreach ($nodes_data as $node_data) {
+          $node_nid = $node_data['nid'];
+          $node_tnid = $node_data['tnid'] ?? $node_nid;
+          $is_translation = !empty($node_tnid) && $node_tnid != $node_nid && $node_tnid != '0';
+
+          if ($is_translation) {
+            $translations_data[] = $node_data;
+          }
+          else {
+            $original_data = $node_data;
+          }
+        }
+
+        // Спочатку імпортуємо оригінал.
+        if ($original_data) {
+          $result = self::importSingleNode($original_data);
+          if ($result['success']) {
+            $context['sandbox']['imported']++;
+            $mapping_service->saveMapping('node', $original_data['nid'], $result['nid'], $node_type);
+
+            $log_service->logSuccess(
+              $result['action'] ?? 'import',
+              'node',
+              $result['message'] ?? 'Імпорт успішний',
+              (string) $result['nid'],
+              [
+                'old_nid' => $original_data['nid'],
+                'title' => $original_data['title'],
+                'language' => $original_data['language'] ?? 'uk',
+              ]
+            );
+          }
+          else {
+            $context['sandbox']['errors']++;
+            $log_service->logError(
+              'import',
+              'node',
+              $result['error'] ?? 'Не вдалося імпортувати',
+              (string) $original_data['nid'],
+              ['title' => $original_data['title']]
+            );
+          }
+        }
+
+        // Потім імпортуємо переклади.
+        foreach ($translations_data as $translation_data) {
+          $result = self::importSingleNode($translation_data);
+          if ($result['success']) {
+            $context['sandbox']['imported']++;
+            $mapping_service->saveMapping('node', $translation_data['nid'], $result['nid'], $node_type);
+
+            $log_service->logSuccess(
+              $result['action'] ?? 'import',
+              'node',
+              $result['message'] ?? 'Імпорт успішний',
+              (string) $result['nid'],
+              [
+                'old_nid' => $translation_data['nid'],
+                'title' => $translation_data['title'],
+                'language' => $translation_data['language'] ?? 'uk',
+              ]
+            );
+          }
+          else {
+            $context['sandbox']['errors']++;
+            $log_service->logError(
+              'import',
+              'node',
+              $result['error'] ?? 'Не вдалося імпортувати',
+              (string) $translation_data['nid'],
+              ['title' => $translation_data['title']]
+            );
+          }
+        }
+      }
+      catch (\Exception $e) {
+        $context['sandbox']['errors']++;
+        \Drupal::logger('migrate_from_drupal7')->error('Помилка імпорту групи: @msg', ['@msg' => $e->getMessage()]);
+      }
+    }
+
+    // Оновлюємо прогрес.
+    $context['sandbox']['progress'] += count($nodes);
+    $context['sandbox']['offset'] += $batch_size;
+
+    // Якщо отримали менше ніж batch_size - це останній batch.
+    if (count($nodes) < $batch_size) {
+      $context['finished'] = 1;
+    }
+    else {
+      // Обчислюємо приблизний прогрес (не можемо знати точну кількість заздалегідь).
+      $context['finished'] = min(0.99, $context['sandbox']['progress'] / ($context['sandbox']['progress'] + $batch_size));
+    }
+
+    $context['message'] = t('Імпорт @type: оброблено @progress нод (імпортовано: @imported, помилок: @errors)', [
+      '@type' => $node_type,
+      '@progress' => $context['sandbox']['progress'],
+      '@imported' => $context['sandbox']['imported'],
+      '@errors' => $context['sandbox']['errors'],
+    ]);
+
+    // Зберігаємо результати для фінального повідомлення.
+    if ($context['finished'] == 1) {
+      $context['results']['imported'] = ($context['results']['imported'] ?? 0) + $context['sandbox']['imported'];
+      $context['results']['errors'] = ($context['results']['errors'] ?? 0) + $context['sandbox']['errors'];
+    }
+  }
+
+  /**
+   * Batch імпорт (старий метод для сумісності з cron).
    */
   public static function batchImport($node_type, array &$context) {
     $api_client = \Drupal::service('migrate_from_drupal7.api_client');
@@ -1105,11 +1320,26 @@ class ImportNodesForm extends FormBase {
    * Batch завершено.
    */
   public static function batchFinished($success, array $results, array $operations) {
+    $messenger = \Drupal::messenger();
+
     if ($success) {
-      \Drupal::messenger()->addStatus(t('Імпорт завершено!'));
+      $imported = $results['imported'] ?? 0;
+      $errors = $results['errors'] ?? 0;
+
+      if ($imported > 0) {
+        $messenger->addStatus(t('Імпорт завершено! Імпортовано матеріалів: @imported', ['@imported' => $imported]));
+      }
+
+      if ($errors > 0) {
+        $messenger->addWarning(t('Під час імпорту виникло помилок: @errors. Перевірте логи для деталей.', ['@errors' => $errors]));
+      }
+
+      if ($imported === 0 && $errors === 0) {
+        $messenger->addWarning(t('Не знайдено матеріалів для імпорту або всі матеріали вже актуальні.'));
+      }
     }
     else {
-      \Drupal::messenger()->addError(t('Помилка імпорту.'));
+      $messenger->addError(t('Виникла критична помилка під час імпорту. Перевірте логи.'));
     }
   }
 
