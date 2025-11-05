@@ -394,6 +394,18 @@ class ImportParagraphTypesForm extends FormBase {
 
     $field_type = $field_type_map[$field_info['type']] ?? 'string';
 
+    // Якщо text_long має text_processing:1 або default_format, то це форматоване поле.
+    // В Drupal 11 форматовані текстові поля мають тип 'text_long', а не 'string_long'.
+    if ($field_info['type'] == 'text_long') {
+      $has_text_processing = !empty($field_info['text_processing']);
+      $has_default_format = !empty($field_info['default_format']);
+
+      if ($has_text_processing || $has_default_format) {
+        $field_type = 'text_long';  // Форматоване текстове поле
+        $field_info['_is_formatted'] = TRUE;  // Позначаємо для використання в configureFormDisplay
+      }
+    }
+
     // Перевіряємо чи існує field storage.
     $field_storage = FieldStorageConfig::loadByName('paragraph', $field_name);
     $cardinality = isset($field_info['cardinality']) && $field_info['cardinality'] == -1 ?
@@ -620,6 +632,12 @@ class ImportParagraphTypesForm extends FormBase {
 
     $widget_type = $widget_map[$field_info['widget'] ?? ''] ?? 'string_textfield';
 
+    // Якщо поле форматоване (text_long з text_processing або default_format),
+    // використовуємо text_textarea замість string_textarea.
+    if (!empty($field_info['_is_formatted']) && $widget_type == 'string_textarea') {
+      $widget_type = 'text_textarea';
+    }
+
     // Для вкладених field collections використовуємо paragraphs widget.
     if (isset($field_info['type']) && $field_info['type'] == 'field_collection') {
       $widget_type = 'paragraphs';
@@ -652,10 +670,9 @@ class ImportParagraphTypesForm extends FormBase {
       $widget_settings['summary_rows'] = 3;
     }
 
-    // Додаємо default_value_callback для default_format.
-    if (!empty($field_info['_default_format'])) {
-      // В Drupal 11 default format встановлюється через filter format налаштування.
-      // Ми можемо вказати його через third_party_settings або залишити для manually configuration.
+    // Для форматованих текстових полів додаємо налаштування rows.
+    if ($widget_type == 'text_textarea' && !empty($field_info['widget_settings']['rows'])) {
+      $widget_settings['rows'] = (int) $field_info['widget_settings']['rows'];
     }
 
     $form_display->setComponent($field_name, [
