@@ -80,6 +80,15 @@ class ImportNodesForm extends FormBase {
       '#required' => TRUE,
     ];
 
+    $form['limit'] = [
+      '#type' => 'number',
+      '#title' => $this->t('Максимальна кількість матеріалів для імпорту'),
+      '#description' => $this->t('Залиште порожнім для імпорту всіх матеріалів. Корисно для тестування (наприклад, імпортувати тільки перші 50 нод).'),
+      '#default_value' => '',
+      '#min' => 1,
+      '#required' => FALSE,
+    ];
+
     $form['actions']['submit'] = [
       '#type' => 'submit',
       '#value' => $this->t('Імпорт'),
@@ -91,6 +100,8 @@ class ImportNodesForm extends FormBase {
   public function submitForm(array &$form, FormStateInterface $form_state) {
     $node_types = array_filter($form_state->getValue('node_types'));
     $batch_size = (int) $form_state->getValue('batch_size');
+    $limit = $form_state->getValue('limit');
+    $limit = !empty($limit) ? (int) $limit : NULL;
 
     $batch = [
       'title' => $this->t('Імпорт матеріалів'),
@@ -101,7 +112,7 @@ class ImportNodesForm extends FormBase {
     foreach ($node_types as $node_type) {
       $batch['operations'][] = [
         [self::class, 'batchImportNodes'],
-        [$node_type, $batch_size],
+        [$node_type, $batch_size, $limit],
       ];
     }
 
@@ -115,10 +126,12 @@ class ImportNodesForm extends FormBase {
    *   Тип матеріалу.
    * @param int $batch_size
    *   Кількість нод за один batch.
+   * @param int|null $limit
+   *   Максимальна кількість матеріалів для імпорту (NULL = без обмежень).
    * @param array $context
    *   Контекст batch.
    */
-  public static function batchImportNodes($node_type, $batch_size, array &$context) {
+  public static function batchImportNodes($node_type, $batch_size, $limit = NULL, array &$context) {
     $api_client = \Drupal::service('migrate_from_drupal7.api_client');
     $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
     $log_service = \Drupal::service('migrate_from_drupal7.log');
@@ -131,22 +144,52 @@ class ImportNodesForm extends FormBase {
       $context['sandbox']['errors'] = 0;
       $context['sandbox']['batch_size'] = $batch_size;
       $context['sandbox']['node_type'] = $node_type;
+      $context['sandbox']['limit'] = $limit;
 
       // Отримуємо загальну кількість нод (приблизно).
       $context['sandbox']['max'] = 999999; // Будемо зменшувати поступово
 
+      $limit_msg = $limit !== NULL ? " (ліміт: $limit)" : '';
       $log_service->logSuccess(
         'import_start',
         'node',
-        "Початок імпорту типу $node_type (batch size: $batch_size)",
+        "Початок імпорту типу $node_type (batch size: $batch_size$limit_msg)",
         $node_type,
         []
       );
     }
 
+    // Перевіряємо чи досягли ліміту.
+    $limit = $context['sandbox']['limit'];
+    if ($limit !== NULL && $context['sandbox']['imported'] >= $limit) {
+      $context['finished'] = 1;
+      $context['message'] = t('Досягнуто ліміт: @limit матеріалів', ['@limit' => $limit]);
+
+      $log_service->logSuccess(
+        'import_limit_reached',
+        'node',
+        "Досягнуто ліміт імпорту типу $node_type. Імпортовано: {$context['sandbox']['imported']}, Помилок: {$context['sandbox']['errors']}",
+        $node_type,
+        [
+          'imported' => $context['sandbox']['imported'],
+          'errors' => $context['sandbox']['errors'],
+          'limit' => $limit,
+        ]
+      );
+      return;
+    }
+
     // Завантажуємо порцію нод.
     $offset = $context['sandbox']['offset'];
-    $nodes = $api_client->getNodes($node_type, $batch_size, $offset);
+
+    // Якщо є ліміт, коригуємо batch_size щоб не перевищити ліміт.
+    $effective_batch_size = $batch_size;
+    if ($limit !== NULL) {
+      $remaining = $limit - $context['sandbox']['imported'];
+      $effective_batch_size = min($batch_size, $remaining);
+    }
+
+    $nodes = $api_client->getNodes($node_type, $effective_batch_size, $offset);
 
     if (empty($nodes)) {
       // Більше немає нод - завершуємо.
@@ -298,12 +341,23 @@ class ImportNodesForm extends FormBase {
       $context['finished'] = min(0.99, $context['sandbox']['progress'] / ($context['sandbox']['progress'] + $batch_size));
     }
 
-    $context['message'] = t('Імпорт @type: оброблено @progress нод (імпортовано: @imported, помилок: @errors)', [
-      '@type' => $node_type,
-      '@progress' => $context['sandbox']['progress'],
-      '@imported' => $context['sandbox']['imported'],
-      '@errors' => $context['sandbox']['errors'],
-    ]);
+    // Формуємо повідомлення з урахуванням ліміту.
+    if ($limit !== NULL) {
+      $context['message'] = t('Імпорт @type: імпортовано @imported з @limit (ліміт), помилок: @errors', [
+        '@type' => $node_type,
+        '@imported' => $context['sandbox']['imported'],
+        '@limit' => $limit,
+        '@errors' => $context['sandbox']['errors'],
+      ]);
+    }
+    else {
+      $context['message'] = t('Імпорт @type: оброблено @progress нод (імпортовано: @imported, помилок: @errors)', [
+        '@type' => $node_type,
+        '@progress' => $context['sandbox']['progress'],
+        '@imported' => $context['sandbox']['imported'],
+        '@errors' => $context['sandbox']['errors'],
+      ]);
+    }
 
     // Зберігаємо результати для фінального повідомлення.
     if ($context['finished'] == 1) {
