@@ -325,6 +325,12 @@ class ImportContentTypesForm extends FormBase {
    *   Інформація про поле.
    */
   protected static function createField($type_id, $field_name, array $field_info) {
+    // СПЕЦІАЛЬНА ОБРОБКА: Field Collection → Paragraph
+    if ($field_info['type'] === 'field_collection') {
+      self::createParagraphField($type_id, $field_name, $field_info);
+      return;
+    }
+
     // Мапінг типів полів з Drupal 7 на Drupal 11.
     $field_type_map = [
       'text' => 'string',
@@ -597,6 +603,156 @@ class ImportContentTypesForm extends FormBase {
     ]);
 
     $view_display->save();
+  }
+
+  /**
+   * Створити поле для Paragraph (конвертація Field Collection).
+   *
+   * @param string $type_id
+   *   ID типу контенту.
+   * @param string $field_name
+   *   Назва поля.
+   * @param array $field_info
+   *   Інформація про поле field collection.
+   */
+  protected static function createParagraphField($type_id, $field_name, array $field_info) {
+    // Визначаємо bundle paragraph type з field collection.
+    $paragraph_bundle = $field_info['collection']['bundle'] ?? $field_name;
+
+    // Перевіряємо чи існує paragraph type.
+    $module_handler = \Drupal::service('module_handler');
+    if (!$module_handler->moduleExists('paragraphs')) {
+      \Drupal::logger('migrate_from_drupal7')->warning(
+        'Пропущено поле @field (@type): модуль Paragraphs не встановлено. Встановіть: composer require drupal/paragraphs',
+        ['@field' => $field_name, '@type' => $type_id]
+      );
+      return;
+    }
+
+    // Перевіряємо чи існує paragraph type з таким bundle.
+    $paragraph_type = \Drupal\paragraphs\Entity\ParagraphsType::load($paragraph_bundle);
+    if (!$paragraph_type) {
+      \Drupal::logger('migrate_from_drupal7')->warning(
+        'Пропущено поле @field (@type): Paragraph Type "@bundle" не знайдено. Спочатку створіть Paragraph Types через форму "Створення Paragraph Types".',
+        ['@field' => $field_name, '@type' => $type_id, '@bundle' => $paragraph_bundle]
+      );
+      return;
+    }
+
+    // Отримуємо cardinality.
+    $cardinality = $field_info['cardinality'] == -1 ? -1 : (int) $field_info['cardinality'];
+
+    // Перевіряємо чи існує field storage.
+    $field_storage = FieldStorageConfig::loadByName('node', $field_name);
+
+    if (!$field_storage) {
+      // Створюємо field storage для entity_reference_revisions.
+      $field_storage = FieldStorageConfig::create([
+        'field_name' => $field_name,
+        'entity_type' => 'node',
+        'type' => 'entity_reference_revisions',
+        'cardinality' => $cardinality,
+        'settings' => [
+          'target_type' => 'paragraph',
+        ],
+      ]);
+      $field_storage->save();
+
+      \Drupal::logger('migrate_from_drupal7')->info(
+        'Створено field storage для paragraph поля @field (тип: @type)',
+        ['@field' => $field_name, '@type' => $type_id]
+      );
+    }
+    else {
+      // Оновлюємо cardinality якщо потрібно.
+      if ($field_storage->getCardinality() != $cardinality) {
+        $field_storage->setCardinality($cardinality);
+        $field_storage->save();
+      }
+    }
+
+    // Перевіряємо чи існує field instance.
+    $field = FieldConfig::loadByName('node', $type_id, $field_name);
+
+    if (!$field) {
+      // Створюємо field instance.
+      $field = FieldConfig::create([
+        'field_storage' => $field_storage,
+        'bundle' => $type_id,
+        'label' => $field_info['label'] ?? $field_name,
+        'description' => $field_info['description'] ?? '',
+        'required' => (bool) ($field_info['required'] ?? FALSE),
+        'settings' => [
+          'handler' => 'default:paragraph',
+          'handler_settings' => [
+            'negate' => 0,
+            'target_bundles' => [
+              $paragraph_bundle => $paragraph_bundle,
+            ],
+            'target_bundles_drag_drop' => [
+              $paragraph_bundle => [
+                'enabled' => TRUE,
+                'weight' => 0,
+              ],
+            ],
+          ],
+        ],
+      ]);
+      $field->save();
+
+      \Drupal::logger('migrate_from_drupal7')->info(
+        'Створено paragraph поле @field для типу @type → paragraph type "@bundle"',
+        ['@field' => $field_name, '@type' => $type_id, '@bundle' => $paragraph_bundle]
+      );
+
+      // Налаштовуємо Form Display.
+      $form_display = EntityFormDisplay::load('node.' . $type_id . '.default');
+      if (!$form_display) {
+        $form_display = EntityFormDisplay::create([
+          'targetEntityType' => 'node',
+          'bundle' => $type_id,
+          'mode' => 'default',
+          'status' => TRUE,
+        ]);
+      }
+
+      $form_display->setComponent($field_name, [
+        'type' => 'paragraphs',
+        'weight' => 10,
+        'settings' => [
+          'title' => 'Paragraph',
+          'title_plural' => 'Paragraphs',
+          'edit_mode' => 'open',
+          'add_mode' => 'dropdown',
+          'form_display_mode' => 'default',
+        ],
+        'third_party_settings' => [],
+      ]);
+      $form_display->save();
+
+      // Налаштовуємо View Display.
+      $view_display = EntityViewDisplay::load('node.' . $type_id . '.default');
+      if (!$view_display) {
+        $view_display = EntityViewDisplay::create([
+          'targetEntityType' => 'node',
+          'bundle' => $type_id,
+          'mode' => 'default',
+          'status' => TRUE,
+        ]);
+      }
+
+      $view_display->setComponent($field_name, [
+        'type' => 'entity_reference_revisions_entity_view',
+        'weight' => 10,
+        'label' => 'above',
+        'settings' => [
+          'view_mode' => 'default',
+          'link' => '',
+        ],
+        'third_party_settings' => [],
+      ]);
+      $view_display->save();
+    }
   }
 
   /**
