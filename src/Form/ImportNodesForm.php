@@ -131,7 +131,7 @@ class ImportNodesForm extends FormBase {
    * @param array $context
    *   Контекст batch.
    */
-  public static function batchImportNodes($node_type, $batch_size, $limit = NULL, array &$context) {
+  public static function batchImportNodes($node_type, $batch_size, $limit, array &$context) {
     $api_client = \Drupal::service('migrate_from_drupal7.api_client');
     $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
     $log_service = \Drupal::service('migrate_from_drupal7.log');
@@ -1121,6 +1121,14 @@ class ImportNodesForm extends FormBase {
   protected static function setFieldsToNode($node, array $fields_data): void {
     foreach ($fields_data as $field_name => $field_value) {
       if (!$node->hasField($field_name)) {
+        \Drupal::logger('migrate_from_drupal7')->warning(
+          'Поле @field не існує в типі контенту @type (nid: @nid). Поле пропущено. Можливо це поле не було імпортоване при створенні типу контенту.',
+          [
+            '@field' => $field_name,
+            '@type' => $node->bundle(),
+            '@nid' => $node->id() ?? 'новий',
+          ]
+        );
         continue;
       }
 
@@ -1128,7 +1136,15 @@ class ImportNodesForm extends FormBase {
         $node->set($field_name, $field_value);
       }
       catch (\Exception $e) {
-        // Не вдалося встановити поле.
+        \Drupal::logger('migrate_from_drupal7')->error(
+          'Помилка встановлення поля @field в ноду @nid (тип: @type): @message',
+          [
+            '@field' => $field_name,
+            '@nid' => $node->id() ?? 'новий',
+            '@type' => $node->bundle(),
+            '@message' => $e->getMessage(),
+          ]
+        );
       }
     }
   }
@@ -1272,6 +1288,14 @@ class ImportNodesForm extends FormBase {
 
       // Перевіряємо чи paragraph має це поле.
       if (!$paragraph->hasField($field_name)) {
+        \Drupal::logger('migrate_from_drupal7')->warning(
+          'Поле @field не існує в типі параграфа @type (item_id: @item_id). Поле пропущено. Можливо це поле не було імпортоване при створенні Paragraph Type.',
+          [
+            '@field' => $field_name,
+            '@type' => $paragraph_type,
+            '@item_id' => $item['item_id'] ?? 'unknown',
+          ]
+        );
         continue;
       }
 
