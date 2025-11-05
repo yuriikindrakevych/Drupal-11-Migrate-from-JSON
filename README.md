@@ -91,7 +91,7 @@ composer require drupal/paragraphs
 drush en paragraphs
 ```
 
-### Послідовність дій
+### Послідовність дій (3 кроки)
 
 #### Крок 1: Підготовка JSON на Drupal 7
 
@@ -183,26 +183,31 @@ drush en paragraphs
 
 **Результат:** Для кожної field collection буде створено відповідний Paragraph Type з усіма полями.
 
-#### Крок 3: Оновлення типів контенту (вручну)
+#### Крок 3: Імпорт типів контенту (автоматична заміна полів)
 
-Після створення Paragraph Types потрібно замінити field collection поля на paragraph поля:
+**ВАЖЛИВО:** Цей крок потрібно зробити **ПІСЛЯ** створення Paragraph Types (Крок 2).
 
-1. Перейдіть до **Структура** → **Типи вмісту**
-2. Виберіть потрібний тип контенту → **Керувати полями**
-3. Для кожного field collection поля:
-   - Видаліть старе поле field_collection (або залиште, якщо планується поступова міграція)
-   - Створіть нове поле типу **Paragraph** з такою ж назвою
-   - Налаштуйте:
-     - **Тип посилання:** Paragraphs
-     - **Дозволені Paragraph Types:** виберіть створений paragraph type
-     - **Кількість значень:** така ж як у field collection
+1. Перейдіть до вкладки **Імпорт типів матеріалів та полів**
+2. Виберіть типи контенту з field collections
+3. Виберіть поля (включно з field_collection полями)
+4. Натисніть **Імпортувати**
 
-**Приклад:**
+**Що відбувається автоматично:**
+- Модуль виявляє field_collection поля
+- Перевіряє чи існує відповідний Paragraph Type
+- Якщо існує → створює поле типу **Entity Reference Revisions: Paragraph**
+- Налаштовує прив'язку до paragraph type
+- Налаштовує Form Display (widget: paragraphs)
+- Налаштовує View Display (formatter: entity_reference_revisions_entity_view)
+
+**Результат:**
 ```
-Старе поле: field_exp_comment (Field Collection)
-Нове поле: field_exp_comment (Entity Reference Revisions: Paragraph)
-Дозволені типи: field_exp_comment
+Було: field_exp_comment (Field Collection - пропущено)
+Стало: field_exp_comment (Entity Reference Revisions: Paragraph → field_exp_comment)
 ```
+
+**Якщо Paragraph Type не існує:**
+Модуль пропустить поле і запише warning в логи. Спочатку створіть Paragraph Types (Крок 2).
 
 #### Крок 4: Імпорт матеріалів
 
@@ -311,8 +316,14 @@ drush cr
 
 **Paragraphs не відображаються в ноді**
 - Перевірте що поле в типі контенту має тип "Entity Reference Revisions: Paragraph"
-- Перевірте "Дозволені Paragraph Types" в налаштуваннях поля
-- Перевірте Form Display та View Display
+- Перевірте "Дозволені Paragraph Types" в налаштуваннях поля (має бути вибраний відповідний paragraph type)
+- Перевірте Form Display (має бути widget "paragraphs")
+- Перевірте View Display (має бути formatter "Rendered entity")
+
+**Поле створилось як Text замість Paragraph**
+- Ви імпортували тип контенту ПЕРЕД створенням Paragraph Types
+- Правильна послідовність: Крок 2 (створити Paragraph Types) → Крок 3 (імпортувати типи контенту)
+- Видаліть текстове поле вручну та повторно імпортуйте тип контенту
 
 ### Файли-приклади
 
