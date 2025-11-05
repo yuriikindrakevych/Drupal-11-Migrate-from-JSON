@@ -12,3 +12,11 @@ logs:
       css/logs.css: {}
   dependencies:
     - core/drupal
+
+vertical-tabs:
+  version: 1.x
+  css:
+    theme:
+      css/vertical-tabs.css: {}
+  dependencies:
+    - core/drupal

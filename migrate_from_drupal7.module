@@ -138,7 +138,7 @@ function migrate_from_drupal7_cron() {
     if (!empty($node_type)) {
       $batch['operations'][] = [
         '\Drupal\migrate_from_drupal7\Form\ImportNodesForm::batchImportNodes',
-        [$node_type, 50, $skip_unchanged],  // batch_size=50, skip_unchanged
+        [$node_type, 50, NULL],  // batch_size=50, limit=NULL (без обмежень)
       ];
     }
   }
@@ -154,4 +154,31 @@ function migrate_from_drupal7_cron() {
   // Запускаємо batch.
   $batch =& batch_get();
   $batch['progressive'] = FALSE;
+}
+
+/**
+ * Implements hook_page_attachments().
+ */
+function migrate_from_drupal7_page_attachments(array &$attachments) {
+  // Підключаємо бібліотеку вертикальних вкладок на сторінках модуля.
+  $route_name = \Drupal::routeMatch()->getRouteName();
+
+  // Список роутів модуля.
+  $module_routes = [
+    'migrate_from_drupal7.overview',
+    'migrate_from_drupal7.settings',
+    'migrate_from_drupal7.import_taxonomy',
+    'migrate_from_drupal7.import_content_types',
+    'migrate_from_drupal7.import_paragraph_types',
+    'migrate_from_drupal7.import_terms',
+    'migrate_from_drupal7.import_nodes',
+    'migrate_from_drupal7.import_user_fields',
+    'migrate_from_drupal7.import_users',
+    'migrate_from_drupal7.cron_settings',
+    'migrate_from_drupal7.logs',
+  ];
+
+  if (in_array($route_name, $module_routes)) {
+    $attachments['#attached']['library'][] = 'migrate_from_drupal7/vertical-tabs';
+  }
 }
