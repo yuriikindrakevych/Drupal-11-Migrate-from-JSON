@@ -685,15 +685,29 @@ class ImportNodesForm extends FormBase {
 
     foreach ($node_data['fields'] as $field_name => $field_values) {
       if (empty($field_values) || !is_array($field_values)) {
+        \Drupal::logger('migrate_from_drupal7')->debug(
+          'Пропущено поле @field: порожнє або не масив',
+          ['@field' => $field_name]
+        );
         continue;
       }
 
       // ВАЖЛИВО: Для одиничних полів (cardinality = 1) Drupal 7 може повертати
       // об'єкт замість масиву: {"value": "...", "format": "..."}
       // Перевіряємо чи це об'єкт (асоціативний масив) з value/format.
+      $is_single_object = false;
       if (isset($field_values['value']) && !isset($field_values[0])) {
         // Це одиничне поле у форматі об'єкта - перетворюємо в масив з одним елементом.
+        $is_single_object = true;
         $field_values = [$field_values];
+
+        \Drupal::logger('migrate_from_drupal7')->info(
+          'Поле @field перетворено з об\'єкта в масив. Keys: @keys',
+          [
+            '@field' => $field_name,
+            '@keys' => implode(', ', array_keys($field_values[0])),
+          ]
+        );
       }
 
       // Визначаємо тип поля за його структурою.
@@ -806,6 +820,15 @@ class ImportNodesForm extends FormBase {
             'value' => $first_item['value'],
             'format' => !empty($first_item['format']) ? $first_item['format'] : 'plain_text',
           ];
+
+          \Drupal::logger('migrate_from_drupal7')->info(
+            'Текстове поле з форматом @field додано (format: @format, довжина: @len)',
+            [
+              '@field' => $field_name,
+              '@format' => $first_item['format'],
+              '@len' => strlen($first_item['value']),
+            ]
+          );
         }
         else {
           // Множинні значення.
@@ -817,6 +840,11 @@ class ImportNodesForm extends FormBase {
             ];
           }
           $fields_data[$field_name] = $values;
+
+          \Drupal::logger('migrate_from_drupal7')->info(
+            'Текстове поле з форматом @field додано (@count значень)',
+            ['@field' => $field_name, '@count' => count($values)]
+          );
         }
       }
       // 7. Прості текстові поля (string, string_long) - тільки value.
@@ -873,8 +901,24 @@ class ImportNodesForm extends FormBase {
       // 9. Інші типи - пропускаємо.
       else {
         // Невідомий тип поля, пропускаємо.
+        \Drupal::logger('migrate_from_drupal7')->warning(
+          'Поле @field не розпізнано (не підійшло до жодної умови). First item keys: @keys',
+          [
+            '@field' => $field_name,
+            '@keys' => !empty($first_item) ? implode(', ', array_keys($first_item)) : 'empty',
+          ]
+        );
       }
     }
+
+    \Drupal::logger('migrate_from_drupal7')->info(
+      'Підготовлено @count полів для ноди @nid (тип: @type)',
+      [
+        '@count' => count($fields_data),
+        '@nid' => $node_data['nid'],
+        '@type' => $bundle,
+      ]
+    );
 
     return $fields_data;
   }
@@ -1142,6 +1186,15 @@ class ImportNodesForm extends FormBase {
 
       try {
         $node->set($field_name, $field_value);
+
+        \Drupal::logger('migrate_from_drupal7')->info(
+          'Поле @field успішно встановлено для ноди @nid (тип: @type)',
+          [
+            '@field' => $field_name,
+            '@nid' => $node->id() ?? 'новий',
+            '@type' => $node->bundle(),
+          ]
+        );
       }
       catch (\Exception $e) {
         \Drupal::logger('migrate_from_drupal7')->error(
