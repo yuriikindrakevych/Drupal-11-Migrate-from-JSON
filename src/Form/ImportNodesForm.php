@@ -816,8 +816,15 @@ class ImportNodesForm extends FormBase {
       elseif (isset($first_item['value']) && isset($first_item['format'])) {
         if (count($field_values) == 1) {
           // Одне значення.
+          $text_value = $first_item['value'];
+
+          // Обробляємо inline зображення в текстових полях з HTML форматом.
+          if (!empty($first_item['format']) && $first_item['format'] !== 'plain_text') {
+            $text_value = self::processInlineImages($text_value, $title);
+          }
+
           $fields_data[$field_name] = [
-            'value' => $first_item['value'],
+            'value' => $text_value,
             'format' => !empty($first_item['format']) ? $first_item['format'] : 'plain_text',
           ];
 
@@ -826,7 +833,7 @@ class ImportNodesForm extends FormBase {
             [
               '@field' => $field_name,
               '@format' => $first_item['format'],
-              '@len' => strlen($first_item['value']),
+              '@len' => strlen($text_value),
             ]
           );
         }
@@ -834,8 +841,15 @@ class ImportNodesForm extends FormBase {
           // Множинні значення.
           $values = [];
           foreach ($field_values as $item) {
+            $text_value = $item['value'];
+
+            // Обробляємо inline зображення.
+            if (!empty($item['format']) && $item['format'] !== 'plain_text') {
+              $text_value = self::processInlineImages($text_value, $title);
+            }
+
             $values[] = [
-              'value' => $item['value'],
+              'value' => $text_value,
               'format' => !empty($item['format']) ? $item['format'] : 'plain_text',
             ];
           }
@@ -1408,8 +1422,15 @@ class ImportNodesForm extends FormBase {
         // Обробка текстових полів з форматом.
         elseif (is_array($value) && isset($value['value'])) {
           if (isset($value['format'])) {
+            $text_value = $value['value'];
+
+            // Обробляємо inline зображення в текстових полях параграфів з HTML форматом.
+            if (!empty($value['format']) && $value['format'] !== 'plain_text') {
+              $text_value = self::processInlineImages($text_value, $node_title);
+            }
+
             $paragraph->set($field_name, [
-              'value' => $value['value'],
+              'value' => $text_value,
               'format' => !empty($value['format']) ? $value['format'] : 'plain_text',
             ]);
           }
