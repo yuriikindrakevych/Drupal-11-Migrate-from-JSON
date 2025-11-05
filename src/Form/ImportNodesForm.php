@@ -688,6 +688,14 @@ class ImportNodesForm extends FormBase {
         continue;
       }
 
+      // ВАЖЛИВО: Для одиничних полів (cardinality = 1) Drupal 7 може повертати
+      // об'єкт замість масиву: {"value": "...", "format": "..."}
+      // Перевіряємо чи це об'єкт (асоціативний масив) з value/format.
+      if (isset($field_values['value']) && !isset($field_values[0])) {
+        // Це одиничне поле у форматі об'єкта - перетворюємо в масив з одним елементом.
+        $field_values = [$field_values];
+      }
+
       // Визначаємо тип поля за його структурою.
       $first_item = $field_values[0] ?? [];
 
