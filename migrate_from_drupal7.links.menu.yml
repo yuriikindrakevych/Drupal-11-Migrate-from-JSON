@@ -4,3 +4,64 @@ migrate_from_drupal7.admin:
   route_name: migrate_from_drupal7.overview
   parent: system.admin_config_content
   weight: 10
+
+# Вертикальні підменю для кожного розділу міграції
+migrate_from_drupal7.settings_menu:
+  title: 'Налаштування'
+  route_name: migrate_from_drupal7.settings
+  parent: migrate_from_drupal7.admin
+  weight: -10
+
+migrate_from_drupal7.import_taxonomy_menu:
+  title: 'Імпорт словників таксономії'
+  route_name: migrate_from_drupal7.import_taxonomy
+  parent: migrate_from_drupal7.admin
+  weight: 0
+
+migrate_from_drupal7.import_content_types_menu:
+  title: 'Імпорт типів матеріалів та полів'
+  route_name: migrate_from_drupal7.import_content_types
+  parent: migrate_from_drupal7.admin
+  weight: 5
+
+migrate_from_drupal7.import_paragraph_types_menu:
+  title: 'Створення Paragraph Types'
+  route_name: migrate_from_drupal7.import_paragraph_types
+  parent: migrate_from_drupal7.admin
+  weight: 7
+
+migrate_from_drupal7.import_terms_menu:
+  title: 'Імпорт термінів таксономії'
+  route_name: migrate_from_drupal7.import_terms
+  parent: migrate_from_drupal7.admin
+  weight: 10
+
+migrate_from_drupal7.import_nodes_menu:
+  title: 'Імпорт матеріалів'
+  route_name: migrate_from_drupal7.import_nodes
+  parent: migrate_from_drupal7.admin
+  weight: 12
+
+migrate_from_drupal7.import_user_fields_menu:
+  title: 'Імпорт полів користувача'
+  route_name: migrate_from_drupal7.import_user_fields
+  parent: migrate_from_drupal7.admin
+  weight: 13
+
+migrate_from_drupal7.import_users_menu:
+  title: 'Імпорт користувачів'
+  route_name: migrate_from_drupal7.import_users
+  parent: migrate_from_drupal7.admin
+  weight: 14
+
+migrate_from_drupal7.cron_settings_menu:
+  title: 'Автоматичний імпорт (Cron)'
+  route_name: migrate_from_drupal7.cron_settings
+  parent: migrate_from_drupal7.admin
+  weight: 15
+
+migrate_from_drupal7.logs_menu:
+  title: 'Логування'
+  route_name: migrate_from_drupal7.logs
+  parent: migrate_from_drupal7.admin
+  weight: 20
