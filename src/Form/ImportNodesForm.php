@@ -1181,9 +1181,18 @@ class ImportNodesForm extends FormBase {
     \Drupal::service('file_system')->prepareDirectory($directory, \Drupal\Core\File\FileSystemInterface::CREATE_DIRECTORY);
 
     try {
-      // Завантажуємо файл.
+      // Завантажуємо файл з заголовками для обходу Cloudflare.
       $http_client = \Drupal::httpClient();
-      $response = $http_client->get($url);
+      $response = $http_client->get($url, [
+        'headers' => [
+          'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept' => '*/*',
+          'Accept-Language' => 'uk-UA,uk;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Referer' => \Drupal::config('migrate_from_drupal7.settings')->get('base_url') ?? '',
+        ],
+        'timeout' => 60,
+        'connect_timeout' => 30,
+      ]);
       $file_content = $response->getBody()->getContents();
 
       // Зберігаємо файл.
