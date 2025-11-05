@@ -778,20 +778,49 @@ class ImportNodesForm extends FormBase {
         $mapping_service = \Drupal::service('migrate_from_drupal7.mapping');
         $term_ids = [];
 
+        // Отримуємо vocabulary_id з налаштувань поля.
+        $vocabulary_id = self::getVocabularyIdFromField($bundle, $field_name);
+
         foreach ($field_values as $term_data) {
           $old_tid = $term_data['tid'];
-          // Шукаємо новий tid в маппінгу.
-          $new_tid = $mapping_service->getNewId('taxonomy_term', $old_tid);
+
+          // Шукаємо новий tid в маппінгу з vocabulary_id.
+          $new_tid = $mapping_service->getNewId('term', $old_tid, $vocabulary_id);
+
           if ($new_tid) {
             $term_ids[] = ['target_id' => $new_tid];
+
+            \Drupal::logger('migrate_from_drupal7')->debug(
+              'Термін @old_tid замаплено на @new_tid (vocabulary: @vocab, поле: @field)',
+              [
+                '@old_tid' => $old_tid,
+                '@new_tid' => $new_tid,
+                '@vocab' => $vocabulary_id ?? 'не вказано',
+                '@field' => $field_name,
+              ]
+            );
           }
           else {
             // Термін не знайдено в маппінгу.
+            \Drupal::logger('migrate_from_drupal7')->warning(
+              'Термін @old_tid не знайдено в маппінгу (vocabulary: @vocab, поле: @field). Термін пропущено.',
+              [
+                '@old_tid' => $old_tid,
+                '@vocab' => $vocabulary_id ?? 'не вказано',
+                '@field' => $field_name,
+              ]
+            );
           }
         }
 
         if (!empty($term_ids)) {
           $fields_data[$field_name] = $term_ids;
+        }
+        else {
+          \Drupal::logger('migrate_from_drupal7')->notice(
+            'Поле таксономії @field залишилось порожнім - жоден термін не знайдено в маппінгу',
+            ['@field' => $field_name]
+          );
         }
       }
       // 5. Entity reference (node reference) - має target_id.
@@ -1086,6 +1115,49 @@ class ImportNodesForm extends FormBase {
     }
 
     return NULL;
+  }
+
+  /**
+   * Отримати vocabulary_id з налаштувань поля таксономії.
+   *
+   * @param string $bundle
+   *   Тип контенту (bundle).
+   * @param string $field_name
+   *   Назва поля таксономії.
+   *
+   * @return string|null
+   *   ID словника таксономії або NULL.
+   */
+  protected static function getVocabularyIdFromField($bundle, $field_name) {
+    try {
+      // Завантажуємо field config для поля.
+      $field_config = \Drupal\field\Entity\FieldConfig::loadByName('node', $bundle, $field_name);
+
+      if (!$field_config) {
+        return NULL;
+      }
+
+      // Отримуємо налаштування handler (entity_reference).
+      $handler_settings = $field_config->getSetting('handler_settings');
+
+      // target_bundles містить словники, на які посилається поле.
+      if (!empty($handler_settings['target_bundles'])) {
+        // Повертаємо перший словник (зазвичай поле посилається на один словник).
+        $vocabularies = array_keys($handler_settings['target_bundles']);
+        return reset($vocabularies);
+      }
+
+      // Якщо target_bundles порожній, може бути доступ до всіх словників.
+      // В цьому випадку повертаємо NULL і будемо шукати термін без vocabulary_id.
+      return NULL;
+    }
+    catch (\Exception $e) {
+      \Drupal::logger('migrate_from_drupal7')->error(
+        'Помилка отримання vocabulary_id для поля @field: @message',
+        ['@field' => $field_name, '@message' => $e->getMessage()]
+      );
+      return NULL;
+    }
   }
 
   /**
