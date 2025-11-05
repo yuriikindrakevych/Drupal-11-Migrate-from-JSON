@@ -4,56 +4,56 @@ migrate_from_drupal7.overview:
   title: 'Налаштування'
   weight: -10
 
-migrate_from_drupal7.import_taxonomy:
-  route_name: migrate_from_drupal7.import_taxonomy
-  base_route: migrate_from_drupal7.overview
-  title: 'Імпорт словників таксономії'
-  weight: 0
-
-migrate_from_drupal7.import_content_types:
-  route_name: migrate_from_drupal7.import_content_types
-  base_route: migrate_from_drupal7.overview
-  title: 'Імпорт типів матеріалів та полів'
-  weight: 5
-
-migrate_from_drupal7.import_paragraph_types:
-  route_name: migrate_from_drupal7.import_paragraph_types
-  base_route: migrate_from_drupal7.overview
-  title: 'Створення Paragraph Types'
-  weight: 7
-
-migrate_from_drupal7.import_terms:
-  route_name: migrate_from_drupal7.import_terms
-  base_route: migrate_from_drupal7.overview
-  title: 'Імпорт термінів таксономії'
-  weight: 10
-
-migrate_from_drupal7.import_nodes:
-  route_name: migrate_from_drupal7.import_nodes
-  base_route: migrate_from_drupal7.overview
-  title: 'Імпорт матеріалів'
-  weight: 12
-
-migrate_from_drupal7.import_user_fields:
-  route_name: migrate_from_drupal7.import_user_fields
-  base_route: migrate_from_drupal7.overview
-  title: 'Імпорт полів користувача'
-  weight: 13
-
-migrate_from_drupal7.import_users:
-  route_name: migrate_from_drupal7.import_users
-  base_route: migrate_from_drupal7.overview
-  title: 'Імпорт користувачів'
-  weight: 14
-
 migrate_from_drupal7.cron_settings:
   route_name: migrate_from_drupal7.cron_settings
   base_route: migrate_from_drupal7.overview
-  title: 'Автоматичний імпорт (Cron)'
-  weight: 15
+  title: 'Cron'
+  weight: 0
 
 migrate_from_drupal7.logs:
   route_name: migrate_from_drupal7.logs
   base_route: migrate_from_drupal7.overview
   title: 'Логування'
+  weight: 10
+
+migrate_from_drupal7.import_user_fields:
+  route_name: migrate_from_drupal7.import_user_fields
+  base_route: migrate_from_drupal7.overview
+  title: 'Імпорт полів користувачів'
   weight: 20
+
+migrate_from_drupal7.import_users:
+  route_name: migrate_from_drupal7.import_users
+  base_route: migrate_from_drupal7.overview
+  title: 'Імпорт користувачів'
+  weight: 30
+
+migrate_from_drupal7.import_taxonomy:
+  route_name: migrate_from_drupal7.import_taxonomy
+  base_route: migrate_from_drupal7.overview
+  title: 'Імпорт словників таксономій'
+  weight: 40
+
+migrate_from_drupal7.import_terms:
+  route_name: migrate_from_drupal7.import_terms
+  base_route: migrate_from_drupal7.overview
+  title: 'Імпорт термінів таксономій'
+  weight: 50
+
+migrate_from_drupal7.import_paragraph_types:
+  route_name: migrate_from_drupal7.import_paragraph_types
+  base_route: migrate_from_drupal7.overview
+  title: 'Колекційні поля в параграфи'
+  weight: 60
+
+migrate_from_drupal7.import_content_types:
+  route_name: migrate_from_drupal7.import_content_types
+  base_route: migrate_from_drupal7.overview
+  title: 'Імпорт типів матеріалів і полів'
+  weight: 70
+
+migrate_from_drupal7.import_nodes:
+  route_name: migrate_from_drupal7.import_nodes
+  base_route: migrate_from_drupal7.overview
+  title: 'Імпорт матеріалів'
+  weight: 80

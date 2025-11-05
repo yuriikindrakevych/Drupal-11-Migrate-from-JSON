@@ -92,8 +92,9 @@ class ImportParagraphTypesForm extends FormBase {
 
     if (empty($field_collections)) {
       $form['message'] = [
-        '#markup' => '<p>' . $this->t('Field Collections не знайдено в жодному типі контенту.') . '</p>' .
-                     '<p>' . $this->t('Field Collection - це поля з типом "field_collection" в структурі JSON типів контенту.') . '</p>',
+        '#markup' => '<p><em>' . $this->t('Цей крок потрібен лише за наявності Field Collections у Drupal 7.') . '</em></p>' .
+                     '<p>' . $this->t('Field Collections не знайдено в жодному типі контенту.') . '</p>' .
+                     '<p>' . $this->t('Field Collection - це поля з типом "field_collection" в структурі JSON типів контенту. Якщо у вас немає таких полів, можете пропустити цей крок.') . '</p>',
       ];
       return $form;
     }
@@ -101,7 +102,8 @@ class ImportParagraphTypesForm extends FormBase {
     $form['#attached']['library'][] = 'migrate_from_drupal7/import-taxonomy';
 
     $form['info'] = [
-      '#markup' => '<p>' . $this->t('Знайдено @count Field Collections. Виберіть які конвертувати в Paragraph Types.', [
+      '#markup' => '<p><em>' . $this->t('Цей крок потрібен лише за наявності Field Collections у Drupal 7.') . '</em></p>' .
+      '<p>' . $this->t('Знайдено @count Field Collections. Виберіть які конвертувати в Paragraph Types.', [
         '@count' => count($field_collections),
       ]) . '</p>' .
       '<p><strong>' . $this->t('Важливо:') . '</strong> ' .
