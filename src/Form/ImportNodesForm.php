@@ -1120,6 +1120,10 @@ class ImportNodesForm extends FormBase {
       return NULL;
     }
 
+    // Визначаємо чи це приватний файл з Drupal 7.
+    $original_uri = $file_data['uri'] ?? '';
+    $is_private_file = strpos($original_uri, 'private://') === 0;
+
     // Отримуємо налаштування поля для визначення директорії.
     $field_config = \Drupal\field\Entity\FieldConfig::loadByName('node', $bundle, $field_name);
     $file_directory = '';
@@ -1130,10 +1134,35 @@ class ImportNodesForm extends FormBase {
       $file_directory = $settings['file_directory'] ?? '';
       $uri_scheme = $settings['uri_scheme'] ?? 'public';
 
+      // Якщо файл був приватним в Drupal 7, зберігаємо його як приватний.
+      if ($is_private_file) {
+        $uri_scheme = 'private';
+
+        // Витягуємо директорію з оригінального URI (наприклад private://pdf/file.pdf -> pdf).
+        if (empty($file_directory)) {
+          $path_parts = explode('/', str_replace('private://', '', $original_uri));
+          array_pop($path_parts); // Видаляємо ім'я файлу.
+          if (!empty($path_parts)) {
+            $file_directory = implode('/', $path_parts);
+          }
+        }
+      }
+
       // Обробляємо токени в file_directory.
       if (!empty($file_directory)) {
         $token_service = \Drupal::token();
         $file_directory = $token_service->replace($file_directory, [], ['clear' => TRUE]);
+      }
+    }
+    // Якщо поле не знайдено, але файл був приватним - зберігаємо як приватний.
+    elseif ($is_private_file) {
+      $uri_scheme = 'private';
+
+      // Витягуємо директорію з оригінального URI.
+      $path_parts = explode('/', str_replace('private://', '', $original_uri));
+      array_pop($path_parts); // Видаляємо ім'я файлу.
+      if (!empty($path_parts)) {
+        $file_directory = implode('/', $path_parts);
       }
     }
 
@@ -1161,14 +1190,28 @@ class ImportNodesForm extends FormBase {
       $file = \Drupal::service('file.repository')->writeData($file_content, $uri, \Drupal\Core\File\FileSystemInterface::EXISTS_REPLACE);
 
       if ($file) {
+        // Логуємо інформацію про приватні файли.
+        if ($is_private_file) {
+          \Drupal::logger('migrate_from_drupal7')->info(
+            'Приватний файл імпортовано: @filename (fid: @old_fid -> @new_fid, uri: @uri)',
+            [
+              '@filename' => $filename,
+              '@old_fid' => $old_fid,
+              '@new_fid' => $file->id(),
+              '@uri' => $uri,
+            ]
+          );
+        }
+
         // Зберігаємо маппінг.
         $mapping_service->saveMapping('file', $old_fid, $file->id());
         return $file;
       }
     }
     catch (\Exception $e) {
-      \Drupal::logger('migrate_from_drupal7')->error('Помилка завантаження файлу @url: @msg', [
+      \Drupal::logger('migrate_from_drupal7')->error('Помилка завантаження файлу @url (scheme: @scheme): @msg', [
         '@url' => $url,
+        '@scheme' => $uri_scheme,
         '@msg' => $e->getMessage(),
       ]);
     }
