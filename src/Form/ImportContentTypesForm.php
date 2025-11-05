@@ -376,6 +376,18 @@ class ImportContentTypesForm extends FormBase {
 
     $field_type = $field_type_map[$field_info['type']] ?? 'string';
 
+    // Якщо text_long має text_processing:1 або default_format, то це форматоване поле.
+    // В Drupal 11 форматовані текстові поля мають тип 'text_long', а не 'string_long'.
+    if ($field_info['type'] == 'text_long') {
+      $has_text_processing = !empty($field_info['text_processing']);
+      $has_default_format = !empty($field_info['default_format']);
+
+      if ($has_text_processing || $has_default_format) {
+        $field_type = 'text_long';  // Форматоване текстове поле
+        $field_info['_is_formatted'] = TRUE;  // Позначаємо для використання в configureFormDisplay
+      }
+    }
+
     // Перевіряємо чи існує field storage.
     $field_storage = FieldStorageConfig::loadByName('node', $field_name);
     $cardinality = $field_info['cardinality'] == -1 ? -1 : (int) $field_info['cardinality'];
@@ -537,6 +549,12 @@ class ImportContentTypesForm extends FormBase {
 
     $widget_type = $widget_map[$field_info['widget'] ?? ''] ?? 'string_textfield';
 
+    // Якщо поле форматоване (text_long з text_processing або default_format),
+    // використовуємо text_textarea замість string_textarea.
+    if (!empty($field_info['_is_formatted']) && $widget_type == 'string_textarea') {
+      $widget_type = 'text_textarea';
+    }
+
     // Додаємо поле до form display.
     $form_display->setComponent($field_name, [
       'type' => $widget_type,
@@ -575,6 +593,7 @@ class ImportContentTypesForm extends FormBase {
     $formatter_map = [
       'string' => 'string',
       'string_long' => 'basic_string',
+      'text_long' => 'text_default',  // Для форматованих текстових полів
       'text_with_summary' => 'text_default',
       'integer' => 'number_integer',
       'decimal' => 'number_decimal',
@@ -613,6 +632,12 @@ class ImportContentTypesForm extends FormBase {
     ];
 
     $field_type = $field_type_map[$field_info['type']] ?? 'string';
+
+    // Якщо text_long поле форматоване, використовуємо text_long замість string_long.
+    if ($field_info['type'] == 'text_long' && !empty($field_info['_is_formatted'])) {
+      $field_type = 'text_long';
+    }
+
     $formatter_type = $formatter_map[$field_type] ?? 'string';
 
     // Додаємо поле до view display.
