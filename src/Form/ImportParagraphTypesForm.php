@@ -421,6 +421,18 @@ class ImportParagraphTypesForm extends FormBase {
         ];
       }
 
+      // Для string полів встановлюємо max_length.
+      if ($field_type == 'string' && !empty($field_info['max_length'])) {
+        $storage_settings['settings'] = [
+          'max_length' => (int) $field_info['max_length'],
+        ];
+      }
+      elseif ($field_type == 'string' && !empty($field_info['field_settings']['max_length'])) {
+        $storage_settings['settings'] = [
+          'max_length' => (int) $field_info['field_settings']['max_length'],
+        ];
+      }
+
       $field_storage = FieldStorageConfig::create($storage_settings);
       $field_storage->save();
     }
@@ -480,16 +492,74 @@ class ImportParagraphTypesForm extends FormBase {
         ];
       }
 
-      // Для image та file полів налаштовуємо дозволені розширення.
-      if (in_array($field_type, ['image', 'file']) && !empty($field_info['allowed'])) {
+      // Для image та file полів налаштовуємо дозволені розширення та інші параметри.
+      if (in_array($field_type, ['image', 'file'])) {
         if (!isset($field_settings['settings'])) {
           $field_settings['settings'] = [];
         }
 
-        $extensions = is_array($field_info['allowed']) ?
-                      implode(' ', $field_info['allowed']) :
-                      $field_info['allowed'];
-        $field_settings['settings']['file_extensions'] = $extensions;
+        // Дозволені розширення.
+        if (!empty($field_info['allowed'])) {
+          $extensions = is_array($field_info['allowed']) ?
+                        implode(' ', $field_info['allowed']) :
+                        $field_info['allowed'];
+          $field_settings['settings']['file_extensions'] = $extensions;
+        }
+
+        // Директорія для файлів.
+        if (!empty($field_info['file_directory'])) {
+          $field_settings['settings']['file_directory'] = $field_info['file_directory'];
+        }
+
+        // Максимальний розмір файлу.
+        if (!empty($field_info['max_filesize'])) {
+          $field_settings['settings']['max_filesize'] = $field_info['max_filesize'];
+        }
+
+        // Для зображень додаємо resolution settings та alt/title fields.
+        if ($field_type == 'image') {
+          if (!empty($field_info['max_resolution'])) {
+            $field_settings['settings']['max_resolution'] = $field_info['max_resolution'];
+          }
+          if (!empty($field_info['min_resolution'])) {
+            $field_settings['settings']['min_resolution'] = $field_info['min_resolution'];
+          }
+          if (isset($field_info['alt_field'])) {
+            $field_settings['settings']['alt_field'] = (bool) $field_info['alt_field'];
+            $field_settings['settings']['alt_field_required'] = (bool) $field_info['alt_field'];
+          }
+          if (isset($field_info['title_field'])) {
+            $field_settings['settings']['title_field'] = (bool) $field_info['title_field'];
+            $field_settings['settings']['title_field_required'] = FALSE;
+          }
+          // Default image з field_settings.
+          if (!empty($field_info['field_settings']['default_image'])) {
+            $field_settings['settings']['default_image'] = [
+              'uuid' => NULL,
+              'alt' => '',
+              'title' => '',
+              'width' => NULL,
+              'height' => NULL,
+            ];
+          }
+        }
+
+        // URI scheme з field_settings.
+        if (!empty($field_info['field_settings']['uri_scheme'])) {
+          $field_settings['settings']['uri_scheme'] = $field_info['field_settings']['uri_scheme'];
+        }
+      }
+
+      // Для text полів з форматом додаємо default_format.
+      if (in_array($field_info['type'], ['text_long', 'text_with_summary'])) {
+        if (!isset($field_settings['settings'])) {
+          $field_settings['settings'] = [];
+        }
+        // З JSON може бути default_format.
+        if (!empty($field_info['default_format'])) {
+          // Зберігаємо для використання в configureFormDisplay.
+          $field_info['_default_format'] = $field_info['default_format'];
+        }
       }
 
       $field = FieldConfig::create($field_settings);
@@ -555,10 +625,43 @@ class ImportParagraphTypesForm extends FormBase {
       $widget_type = 'paragraphs';
     }
 
+    // Налаштування віджету.
+    $widget_settings = [];
+
+    // Використовуємо widget_settings з JSON якщо є.
+    if (!empty($field_info['widget_settings']) && is_array($field_info['widget_settings'])) {
+      $widget_settings = $field_info['widget_settings'];
+    }
+
+    // Додаємо специфічні налаштування для різних типів віджетів.
+    if ($widget_type == 'image_image' && !empty($field_info['widget_settings'])) {
+      // progress_indicator, preview_image_style вже в widget_settings.
+    }
+
+    if ($widget_type == 'string_textarea' && !empty($field_info['widget_settings']['rows'])) {
+      $widget_settings['rows'] = (int) $field_info['widget_settings']['rows'];
+    }
+
+    if ($widget_type == 'string_textfield' && !empty($field_info['widget_settings']['size'])) {
+      $widget_settings['size'] = (int) $field_info['widget_settings']['size'];
+    }
+
+    // Для text_textarea_with_summary додаємо rows.
+    if ($widget_type == 'text_textarea_with_summary' && !empty($field_info['widget_settings']['rows'])) {
+      $widget_settings['rows'] = (int) $field_info['widget_settings']['rows'];
+      $widget_settings['summary_rows'] = 3;
+    }
+
+    // Додаємо default_value_callback для default_format.
+    if (!empty($field_info['_default_format'])) {
+      // В Drupal 11 default format встановлюється через filter format налаштування.
+      // Ми можемо вказати його через third_party_settings або залишити для manually configuration.
+    }
+
     $form_display->setComponent($field_name, [
       'type' => $widget_type,
       'weight' => 10,
-      'settings' => [],
+      'settings' => $widget_settings,
       'third_party_settings' => [],
     ]);
 
